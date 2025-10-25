@@ -1,0 +1,586 @@
+# revision de la existencia de tripdata (por simple curiosidad)
+
+enzo@Nitro-Enzo:~$ docker exec -it edvai_hadoop bash
+
+root@cd7195a9ebf6:/# su hadoop
+
+user/hive/warehouse/
+
+Found 3 items
+drwxrwxr-x   - hadoop supergroup          0 2022-05-02 14:06 /user/hive/warehouse/emp.db
+drwxrwxr-x   - hadoop supergroup          0 2022-05-09 18:00 /user/hive/warehouse/tables
+drwxrwxr-x   - hadoop supergroup          0 2022-05-02 13:39 /user/hive/warehouse/tripdata.db
+
+hadoop@cd7195a9ebf6:/$ hdfs dfs -ls /user/hive/warehouse/tripdata.db
+
+# Esta vacio
+
+Ejercicio 1 (en un contenedor aparte o el mismo)
+
+
+root@cd7195a9ebf6:/# su hadoop
+hadoop@cd7195a9ebf6:/$ hive
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/home/hadoop/hive/lib/log4j-slf4j-impl-2.6.2.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/home/hadoop/hadoop/share/hadoop/common/lib/slf4j-log4j12-1.7.25.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [org.apache.logging.slf4j.Log4jLoggerFactory]
+
+Logging initialized using configuration in jar:file:/home/hadoop/hive/lib/hive-common-2.3.9.jar!/hive-log4j2.properties Async: true
+Hive-on-MR is deprecated in Hive 2 and may not be available in the future versions. Consider using a different execution engine (i.e. spark, tez) or using Hive 1.X releases.
+WARNING: An illegal reflective access operation has occurred
+WARNING: Illegal reflective access by org.apache.hadoop.hive.common.StringInternUtils (file:/home/hadoop/hive/lib/hive-common-2.3.9.jar) to field java.net.URI.string
+WARNING: Please consider reporting this to the maintainers of org.apache.hadoop.hive.common.StringInternUtils
+WARNING: Use --illegal-access=warn to enable warnings of further illegal reflective access operations
+WARNING: All illegal access operations will be denied in a future release
+hive> CREATE DATABASE IF NOT EXISTS tripdata;
+OK
+Time taken: 2.145 seconds
+hive> USE tripdata;
+OK
+Time taken: 0.087 seconds
+hive>
+    > CREATE EXTERNAL TABLE IF NOT EXISTS airport_trips (
+    >     tpep_pickup_datetime STRING,
+    >     airport_fee DOUBLE,
+    >     payment_type INT,
+    >     tolls_amount DOUBLE,
+    >     total_amount DOUBLE
+    > )
+    > STORED AS PARQUET
+    > LOCATION '/user/hive/warehouse/tripdata.db/airport_trips';
+OK
+Time taken: 2.731 seconds
+hive>
+    > -- Verificaciones
+    > SHOW TABLES;
+OK
+airport_trips
+tripdata_table
+Time taken: 0.244 seconds, Fetched: 2 row(s)
+hive> SHOW TABLES;
+OK
+airport_trips
+tripdata_table
+Time taken: 0.091 seconds, Fetched: 2 row(s)
+
+Ejercicio 2 
+
+hive> DESCRIBE FORMATTED airport_trips;
+OK
+# col_name              data_type               comment
+
+tpep_pickup_datetime    string
+airport_fee             double
+payment_type            int
+tolls_amount            double
+total_amount            double
+
+# Detailed Table Information
+Database:               tripdata
+Owner:                  hadoop
+CreateTime:             Wed Oct 22 20:12:15 ART 2025
+LastAccessTime:         UNKNOWN
+Retention:              0
+Location:               hdfs://172.17.0.2:9000/user/hive/warehouse/tripdata.db/airport_trips
+Table Type:             EXTERNAL_TABLE
+Table Parameters:
+        EXTERNAL                TRUE
+        transient_lastDdlTime   1761174735
+
+# Storage Information
+SerDe Library:          org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+InputFormat:            org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+OutputFormat:           org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
+Compressed:             No
+Num Buckets:            -1
+Bucket Columns:         []
+Sort Columns:           []
+Storage Desc Params:
+        serialization.format    1
+Time taken: 0.286 seconds, Fetched: 30 row(s)
+
+ejerrcicio 3 
+
+hadoop@cd7195a9ebf6:~/scripts$ ls
+derby.log  download_and_ingest.sh  ingest.sh  landing.sh  pyspark_jupyter.sh  spark-warehouse  start-services.sh  transformation.py
+hadoop@cd7195a9ebf6:~/scripts$ nano download_and_ingest.sh
+
+// start script//
+#!/bin/bash
+
+# Script: download_and_ingest.sh
+# Descripción: Descarga archivos Parquet de viajes NYC Taxi y los sube a HDFS
+
+echo "=== INICIANDO DESCARGA E INGESTA A HDFS ==="
+echo "Fecha: $(date)"
+
+# --- CONFIGURACIÓN DEL ENTORNO ---
+# Si Airflow no carga el entorno de Hadoop, lo forzamos manualmente
+export HADOOP_HOME=/home/hadoop/hadoop
+export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
+
+# Comando HDFS con ruta absoluta por seguridad
+HDFS_CMD="$HADOOP_HOME/bin/hdfs"
+
+# Directorio HDFS para los archivos
+HDFS_RAW_DIR="/user/hadoop/tripdata/raw"
+
+# --- 1. Verificar servicios HDFS ---
+echo "1. Verificando servicios HDFS..."
+jps | grep -E "NameNode|DataNode" > /dev/null
+if [ $? -ne 0 ]; then
+  echo "❌ Servicios HDFS no detectados"
+  exit 1
+fi
+
+# --- 2. Verificar/Crear directorio en HDFS ---
+echo "2. Verificando directorio HDFS: $HDFS_RAW_DIR"
+$HDFS_CMD dfs -mkdir -p $HDFS_RAW_DIR
+
+# --- 3. URLs y nombres locales ---
+URL1="https://data-engineer-edvai-public.s3.amazonaws.com/yellow_tripdata_2021-01.parquet"
+URL2="https://data-engineer-edvai-public.s3.amazonaws.com/yellow_tripdata_2021-02.parquet"
+FILE1="yellow_tripdata_2021-01.parquet"
+FILE2="yellow_tripdata_2021-02.parquet"
+
+# --- 4. Prueba de conectividad ---
+echo "3. Probando conectividad con URLs..."
+wget --spider $URL1 --timeout=30
+if [ $? -ne 0 ]; then
+  echo "❌ No hay conexión a internet o el servidor no responde"
+  exit 1
+fi
+echo "✅ Conectividad OK"
+
+# --- 5. Descarga de archivos ---
+echo "4. Descargando archivos..."
+wget --tries=3 --timeout=60 -O $FILE1 $URL1
+DOWNLOAD1=$?
+wget --tries=3 --timeout=60 -O $FILE2 $URL2
+DOWNLOAD2=$?
+
+if [ $DOWNLOAD1 -eq 0 ] && [ $DOWNLOAD2 -eq 0 ]; then
+  echo "✅ Archivos descargados correctamente"
+  echo "   - $FILE1: $(ls -lh $FILE1 | awk '{print $5}')"
+  echo "   - $FILE2: $(ls -lh $FILE2 | awk '{print $5}')"
+else
+  echo "❌ Error en la descarga: códigos $DOWNLOAD1 / $DOWNLOAD2"
+  exit 1
+fi
+
+# --- 6. Subir a HDFS ---
+echo "5. Subiendo archivos a HDFS..."
+$HDFS_CMD dfs -put -f $FILE1 $HDFS_RAW_DIR/
+UPLOAD1=$?
+$HDFS_CMD dfs -put -f $FILE2 $HDFS_RAW_DIR/
+UPLOAD2=$?
+
+if [ $UPLOAD1 -eq 0 ] && [ $UPLOAD2 -eq 0 ]; then
+  echo "✅ Archivos subidos correctamente a HDFS"
+else
+  echo "❌ Error subiendo archivos a HDFS"
+  exit 1
+fi
+
+# --- 7. Verificación ---
+echo "6. Verificando carga en HDFS..."
+$HDFS_CMD dfs -ls -h $HDFS_RAW_DIR/
+
+# --- 8. Limpieza local ---
+echo "7. Limpiando archivos locales..."
+rm -f $FILE1 $FILE2
+
+echo "=== PROCESO COMPLETADO EXITOSAMENTE ==="
+echo "✅ Archivos disponibles en HDFS: $HDFS_RAW_DIR"
+echo "📅 Fecha finalización: $(date)"
+// end - script //
+
+💾 Guarda en nano:
+Ctrl + O → Enter → Ctrl + X
+
+hadoop@cd7195a9ebf6:~/scripts$ chmod +x download_and_ingest.sh
+hadoop@cd7195a9ebf6:~/scripts$ ls -la download_and_ingest.sh
+-rwxrwxr-x 1 hadoop hadoop 2432 Oct 22 21:48 download_and_ingest.sh
+hadoop@cd7195a9ebf6:~/scripts$ ./download_and_ingest.sh
+=== INICIANDO DESCARGA Y INGESTA A HDFS ===
+Fecha: Wed Oct 22 21:48:57 -03 2025
+1. Verificando servicios HDFS...
+199 NameNode
+554 SecondaryNameNode
+317 DataNode
+2. Verificando directorio HDFS: /user/hadoop/tripdata/raw
+3. Probando conectividad con URLs correctas...
+Spider mode enabled. Check if remote file exists.
+--2025-10-22 21:49:00--  https://data-engineer-edvai-public.s3.amazonaws.com/yellow_tripdata_2021-01.parquet
+Resolving data-engineer-edvai-public.s3.amazonaws.com (data-engineer-edvai-public.s3.amazonaws.com)... 16.182.71.233, 52.217.125.225, 52.216.209.137, ...
+Connecting to data-engineer-edvai-public.s3.amazonaws.com (data-engineer-edvai-public.s3.amazonaws.com)|16.182.71.233|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 21686067 (21M) [application/vnd.apache.parquet]
+Remote file exists.
+
+✅ Conectividad OK - URLs correctas detectadas
+4. Descargando archivos Parquet...
+Descargando: https://data-engineer-edvai-public.s3.amazonaws.com/yellow_tripdata_2021-01.parquet
+--2025-10-22 21:49:01--  https://data-engineer-edvai-public.s3.amazonaws.com/yellow_tripdata_2021-01.parquet
+Resolving data-engineer-edvai-public.s3.amazonaws.com (data-engineer-edvai-public.s3.amazonaws.com)... 16.182.71.233, 52.217.125.225, 52.216.209.137, ...
+Connecting to data-engineer-edvai-public.s3.amazonaws.com (data-engineer-edvai-public.s3.amazonaws.com)|16.182.71.233|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 21686067 (21M) [application/vnd.apache.parquet]
+Saving to: 'yellow_tripdata_2021-01.parquet'
+
+yellow_tripdata_2021-01.parquet                      100%[===================================================================================================================>]  20.68M  10.2MB/s    in 2.0s
+
+2025-10-22 21:49:04 (10.2 MB/s) - 'yellow_tripdata_2021-01.parquet' saved [21686067/21686067]
+
+Descargando: https://data-engineer-edvai-public.s3.amazonaws.com/yellow_tripdata_2021-02.parquet
+--2025-10-22 21:49:04--  https://data-engineer-edvai-public.s3.amazonaws.com/yellow_tripdata_2021-02.parquet
+Resolving data-engineer-edvai-public.s3.amazonaws.com (data-engineer-edvai-public.s3.amazonaws.com)... 16.182.71.233, 52.217.125.225, 52.216.209.137, ...
+Connecting to data-engineer-edvai-public.s3.amazonaws.com (data-engineer-edvai-public.s3.amazonaws.com)|16.182.71.233|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 21777258 (21M) [application/vnd.apache.parquet]
+Saving to: 'yellow_tripdata_2021-02.parquet'
+
+yellow_tripdata_2021-02.parquet                      100%[===================================================================================================================>]  20.77M  10.6MB/s    in 2.0s
+
+2025-10-22 21:49:06 (10.6 MB/s) - 'yellow_tripdata_2021-02.parquet' saved [21777258/21777258]
+
+✅ Archivos descargados correctamente
+   - yellow_tripdata_2021-01.parquet: 21M
+   - yellow_tripdata_2021-02.parquet: 21M
+5. Subiendo archivos a HDFS...
+✅ Archivos subidos correctamente a HDFS
+6. Verificando carga en HDFS...
+📊 Contenido del directorio /user/hadoop/tripdata/raw:
+Found 2 items
+-rw-r--r--   1 hadoop supergroup     20.7 M 2025-10-22 21:49 /user/hadoop/tripdata/raw/yellow_tripdata_2021-01.parquet
+-rw-r--r--   1 hadoop supergroup     20.8 M 2025-10-22 21:49 /user/hadoop/tripdata/raw/yellow_tripdata_2021-02.parquet
+7. Limpiando archivos locales...
+=== PROCESO COMPLETADO ===
+✅ Archivos disponibles en HDFS: /user/hadoop/tripdata/raw
+📅 Fecha finalización: Wed Oct 22 21:49:16 -03 2025
+
+Ejercicio 4
+
+hadoop@cd7195a9ebf6:~/scripts$
+hadoop@cd7195a9ebf6:~/scripts$ ls
+derby.log  download_and_ingest.sh  ingest.sh  landing.sh  pyspark_jupyter.sh  spark-warehouse  start-services.sh  transformation.py
+hadoop@cd7195a9ebf6:~/scripts$ nano process_airport_trips.py
+
+// start script//
+#!/usr/bin/env python3
+"""
+Script: process_airport_trips.py
+Descripción: Procesa datos de viajes NYC Taxi con Spark y carga en Hive.
+Filtra los viajes a aeropuertos pagados en efectivo.
+"""
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
+
+def main():
+    print("=== INICIANDO PROCESAMIENTO CON SPARK ===")
+
+    # Inicializar Spark Session con soporte para Hive
+    spark = (
+        SparkSession.builder
+        .appName("AirportTripsProcessing")
+        .config("spark.sql.adaptive.enabled", "true")
+        .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
+        .config("spark.sql.parquet.datetimeRebaseModeInWrite", "CORRECTED")
+        .enableHiveSupport()
+        .getOrCreate()
+    )
+
+    spark.sparkContext.setLogLevel("WARN")
+
+    try:
+        # Ruta en HDFS (ajustada con protocolo hdfs://)
+        hdfs_raw_path = "hdfs://172.17.0.2:9000/user/hadoop/tripdata/raw/"
+
+        print("1. 📂 Leyendo archivos Parquet desde HDFS...")
+        df_jan = spark.read.parquet(hdfs_raw_path + "yellow_tripdata_2021-01.parquet")
+        df_feb = spark.read.parquet(hdfs_raw_path + "yellow_tripdata_2021-02.parquet")
+
+        print(f"   ✅ Enero 2021: {df_jan.count():,} registros")
+        print(f"   ✅ Febrero 2021: {df_feb.count():,} registros")
+
+        # Unir ambos meses
+        print("2. 🔄 Uniendo datos de enero y febrero...")
+        df_combined = df_jan.union(df_feb)
+        print(f"   ✅ Total combinado: {df_combined.count():,} registros")
+
+        # Mostrar esquema
+        print("3. 📊 Esquema de datos:")
+        df_combined.printSchema()
+
+        # Filtrar viajes según criterios
+        print("4. 🔍 Filtrando viajes a aeropuertos pagados en efectivo...")
+        df_filtered = df_combined.filter(
+            (col("airport_fee") > 0) & (col("payment_type") == 2)
+        )
+
+        filtered_count = df_filtered.count()
+        print(f"   ✅ Viajes filtrados: {filtered_count:,} registros")
+
+        # Seleccionar columnas requeridas
+        print("5. 🗂️ Seleccionando columnas para tabla Hive...")
+        df_final = df_filtered.select(
+            col("tpep_pickup_datetime"),
+            col("airport_fee"),
+            col("payment_type"),
+            col("tolls_amount"),
+            col("total_amount"),
+        )
+
+        print("6. 👀 Muestra de datos a insertar:")
+        df_final.show(10, truncate=False)
+
+        print("7. 📈 Estadísticas de los datos:")
+        df_final.describe().show()
+
+        print("8. 💾 Insertando datos en la tabla Hive 'tripdata.airport_trips'...")
+        df_final.write.mode("append").insertInto("tripdata.airport_trips")
+
+        print("✅ PROCESAMIENTO COMPLETADO EXITOSAMENTE")
+        print(f"📊 Total de viajes insertados: {df_final.count():,}")
+
+    except Exception as e:
+        print(f"❌ ERROR durante el procesamiento: {str(e)}")
+        raise e
+
+    finally:
+        spark.stop()
+        print("🛑 Sesión de Spark cerrada")
+
+if __name__ == "__main__":
+    main()
+// end - script //
+
+💾 Guarda en nano:
+Ctrl + O → Enter → Ctrl + X
+
+hadoop@cd7195a9ebf6:~/scripts$ chmod +x process_airport_trips.py
+hadoop@cd7195a9ebf6:~/scripts$ spark-submit process_airport_trips.py
+
+1. Leyendo archivos Parquet...
+   - Enero 2021: 1,369,769 registros
+   - Febrero 2021: 1,371,709 registros
+2. Uniendo datos de enero y febrero...
+   - Total combinado: 2,741,478 registros
+3. Esquema de datos:
+root
+ |-- VendorID: long (nullable = true)
+ |-- tpep_pickup_datetime: timestamp (nullable = true)
+ |-- tpep_dropoff_datetime: timestamp (nullable = true)
+ |-- passenger_count: double (nullable = true)
+ |-- trip_distance: double (nullable = true)
+ |-- RatecodeID: double (nullable = true)
+ |-- store_and_fwd_flag: string (nullable = true)
+ |-- PULocationID: long (nullable = true)
+ |-- DOLocationID: long (nullable = true)
+ |-- payment_type: long (nullable = true)
+ |-- fare_amount: double (nullable = true)
+ |-- extra: double (nullable = true)
+ |-- mta_tax: double (nullable = true)
+ |-- tip_amount: double (nullable = true)
+ |-- tolls_amount: double (nullable = true)
+ |-- improvement_surcharge: double (nullable = true)
+ |-- total_amount: double (nullable = true)
+ |-- congestion_surcharge: double (nullable = true)
+ |-- airport_fee: double (nullable = true)
+
+4. Filtrando viajes a aeropuertos pagados en efectivo...
+   - Viajes filtrados: 1 registros
+5. Seleccionando columnas para la tabla airport_trips...
+6. Muestra de datos a insertar:
++--------------------+-----------+------------+------------+------------+
+|tpep_pickup_datetime|airport_fee|payment_type|tolls_amount|total_amount|
++--------------------+-----------+------------+------------+------------+
+|2021-02-21 02:36:21 |1.25       |2           |0.0         |59.55       |
++--------------------+-----------+------------+------------+------------+
+
+7. Estadísticas de los datos:
++-------+-----------+------------+------------+------------+
+|summary|airport_fee|payment_type|tolls_amount|total_amount|
++-------+-----------+------------+------------+------------+
+|  count|          1|           1|           1|           1|
+|   mean|       1.25|         2.0|         0.0|       59.55|
+| stddev|       null|        null|        null|        null|
+|    min|       1.25|           2|         0.0|       59.55|
+|    max|       1.25|           2|         0.0|       59.55|
++-------+-----------+------------+------------+------------+
+
+8. Insertando datos en la tabla Hive airport_trips...
+2025-10-22 23:28:07,887 WARN conf.HiveConf: HiveConf of name hive.metastore.local does not exist
+✅ PROCESAMIENTO COMPLETADO EXITOSAMENTE
+📊 Total de viajes insertados: 1
+🛑 Sesión de Spark cerrada
+hadoop@cd7195a9ebf6:~/scripts$
+
+hadoop@cd7195a9ebf6:/$ pyspark
+Python 3.8.10 (default, Mar 15 2022, 12:22:08)
+[GCC 9.4.0] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+WARNING: An illegal reflective access operation has occurred
+WARNING: Illegal reflective access by org.apache.spark.unsafe.Platform (file:/home/hadoop/spark/jars/spark-unsafe_2.12-3.2.0.jar) to constructor java.nio.DirectByteBuffer(long,int)
+WARNING: Please consider reporting this to the maintainers of org.apache.spark.unsafe.Platform
+WARNING: Use --illegal-access=warn to enable warnings of further illegal reflective access operations
+WARNING: All illegal access operations will be denied in a future release
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+2025-10-22 23:31:12,860 WARN conf.HiveConf: HiveConf of name hive.metastore.local does not exist
+2025-10-22 23:31:13,009 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+2025-10-22 23:31:15,396 WARN yarn.Client: Neither spark.yarn.jars nor spark.yarn.archive is set, falling back to uploading libraries under SPARK_HOME.
+Welcome to
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /__ / .__/\_,_/_/ /_/\_\   version 3.2.0
+      /_/
+
+Using Python version 3.8.10 (default, Mar 15 2022 12:22:08)
+Spark context Web UI available at http://cd7195a9ebf6:4040
+Spark context available as 'sc' (master = yarn, app id = application_1761171959640_0003).
+SparkSession available as 'spark'.
+>>> from pyspark.sql.functions import col
+>>> df_test = spark.read.parquet("/user/hadoop/tripdata/raw/yellow_tripdata_2021-01.parquet")
+>>> df_test.count()
+1369769
+>>> df_test.printSchema()
+root
+ |-- VendorID: long (nullable = true)
+ |-- tpep_pickup_datetime: timestamp (nullable = true)
+ |-- tpep_dropoff_datetime: timestamp (nullable = true)
+ |-- passenger_count: double (nullable = true)
+ |-- trip_distance: double (nullable = true)
+ |-- RatecodeID: double (nullable = true)
+ |-- store_and_fwd_flag: string (nullable = true)
+ |-- PULocationID: long (nullable = true)
+ |-- DOLocationID: long (nullable = true)
+ |-- payment_type: long (nullable = true)
+ |-- fare_amount: double (nullable = true)
+ |-- extra: double (nullable = true)
+ |-- mta_tax: double (nullable = true)
+ |-- tip_amount: double (nullable = true)
+ |-- tolls_amount: double (nullable = true)
+ |-- improvement_surcharge: double (nullable = true)
+ |-- total_amount: double (nullable = true)
+ |-- congestion_surcharge: double (nullable = true)
+ |-- airport_fee: double (nullable = true)
+
+>>>
+
+Ejercicio 5
+
+hadoop@cd7195a9ebf6:/$ cd ~/airflow/dags
+hadoop@cd7195a9ebf6:~/airflow/dags$ ls
+__pycache__  example-DAG.py  ingest-transform.py
+hadoop@cd7195a9ebf6:~/airflow/dags$ nano airport_trips_processing.py
+
+
+--- airflow Dag - start ---
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+from datetime import timedelta
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from airflow.operators.dummy import DummyOperator
+from airflow.utils.dates import days_ago
+
+default_args = {
+    'owner': 'hadoop',
+    'depends_on_past': False,
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}
+
+with DAG(
+    dag_id='airport_trips_processing',
+    default_args=default_args,
+    description='Orquesta la descarga, ingestión y procesamiento de datos NYC Taxi',
+    schedule_interval=None,
+    start_date=days_ago(1),
+    catchup=False,
+    tags=['spark', 'hive', 'etl'],
+) as dag:
+
+    inicio = DummyOperator(task_id='inicio')
+
+    ingest = BashOperator(
+        task_id='ingesta_datos',
+        bash_command='bash -c \'bash /home/hadoop/scripts/download_and_ingest.sh\'',
+    )
+
+    process = BashOperator(
+        task_id='procesa_spark',
+        bash_command='bash -c \'spark-submit /home/hadoop/scripts/process_airport_trips.py\'',
+    )
+
+    verify = BashOperator(
+        task_id='verifica_tabla_hive',
+        bash_command='bash -c \'beeline -u jdbc:hive2://localhost:10000 -e "USE tripdata; SELECT COUNT(*) AS total FROM airport_trips;"\'',
+    )
+
+    fin = DummyOperator(task_id='fin_proceso')
+
+    inicio >> ingest >> process >> verify >> fin
+
+--- airflow Dag - end ---
+💾 Guarda en nano:
+Ctrl + O → Enter → Ctrl + X
+
+hadoop@cd7195a9ebf6:~/airflow/dags$ ls
+__pycache__  airport_trips_processing.py  example-DAG.py  ingest-transform.py
+
+logs de airflow ---
+
+*** Reading local file: /home/hadoop/airflow/logs/dag_id=airport_trips_processing/run_id=manual__2025-10-23T06:04:41.562919+00:00/task_id=verifica_tabla_hive/attempt=1.log
+[2025-10-23, 03:06:24 UTC] {taskinstance.py:1159} INFO - Dependencies all met for <TaskInstance: airport_trips_processing.verifica_tabla_hive manual__2025-10-23T06:04:41.562919+00:00 [queued]>
+[2025-10-23, 03:06:24 UTC] {taskinstance.py:1159} INFO - Dependencies all met for <TaskInstance: airport_trips_processing.verifica_tabla_hive manual__2025-10-23T06:04:41.562919+00:00 [queued]>
+[2025-10-23, 03:06:24 UTC] {taskinstance.py:1356} INFO - 
+--------------------------------------------------------------------------------
+[2025-10-23, 03:06:24 UTC] {taskinstance.py:1357} INFO - Starting attempt 1 of 2
+[2025-10-23, 03:06:24 UTC] {taskinstance.py:1358} INFO - 
+--------------------------------------------------------------------------------
+[2025-10-23, 03:06:24 UTC] {taskinstance.py:1377} INFO - Executing <Task(BashOperator): verifica_tabla_hive> on 2025-10-23 06:04:41.562919+00:00
+[2025-10-23, 03:06:24 UTC] {standard_task_runner.py:52} INFO - Started process 8344 to run task
+[2025-10-23, 03:06:24 UTC] {standard_task_runner.py:79} INFO - Running: ['airflow', 'tasks', 'run', 'airport_trips_processing', 'verifica_tabla_hive', 'manual__2025-10-23T06:04:41.562919+00:00', '--job-id', '105', '--raw', '--subdir', 'DAGS_FOLDER/airport_trips_processing.py', '--cfg-path', '/tmp/tmpgd07_jm1', '--error-file', '/tmp/tmpbofxc84m']
+[2025-10-23, 03:06:24 UTC] {standard_task_runner.py:80} INFO - Job 105: Subtask verifica_tabla_hive
+[2025-10-23, 03:06:25 UTC] {task_command.py:369} INFO - Running <TaskInstance: airport_trips_processing.verifica_tabla_hive manual__2025-10-23T06:04:41.562919+00:00 [running]> on host cd7195a9ebf6
+[2025-10-23, 03:06:25 UTC] {taskinstance.py:1569} INFO - Exporting the following env vars:
+AIRFLOW_CTX_DAG_OWNER=hadoop
+AIRFLOW_CTX_DAG_ID=airport_trips_processing
+AIRFLOW_CTX_TASK_ID=verifica_tabla_hive
+AIRFLOW_CTX_EXECUTION_DATE=2025-10-23T06:04:41.562919+00:00
+AIRFLOW_CTX_TRY_NUMBER=1
+AIRFLOW_CTX_DAG_RUN_ID=manual__2025-10-23T06:04:41.562919+00:00
+[2025-10-23, 03:06:25 UTC] {subprocess.py:62} INFO - Tmp dir root location: 
+ /tmp
+[2025-10-23, 03:06:25 UTC] {subprocess.py:74} INFO - Running command: ['bash', '-c', 'bash -c \'beeline -u jdbc:hive2://localhost:10000 -e "USE tripdata; SELECT COUNT(*) AS total FROM airport_trips;"\'']
+[2025-10-23, 03:06:25 UTC] {subprocess.py:85} INFO - Output:
+[2025-10-23, 03:06:31 UTC] {subprocess.py:92} INFO - log4j:WARN No appenders could be found for logger (org.apache.hadoop.util.Shell).
+[2025-10-23, 03:06:31 UTC] {subprocess.py:92} INFO - log4j:WARN Please initialize the log4j system properly.
+[2025-10-23, 03:06:31 UTC] {subprocess.py:92} INFO - log4j:WARN See http://logging.apache.org/log4j/1.2/faq.html#noconfig for more info.
+[2025-10-23, 03:06:31 UTC] {subprocess.py:92} INFO - Connecting to jdbc:hive2://localhost:10000
+[2025-10-23, 03:06:37 UTC] {subprocess.py:92} INFO - Connected to: Apache Hive (version 2.3.9)
+[2025-10-23, 03:06:37 UTC] {subprocess.py:92} INFO - Driver: Hive JDBC (version 2.3.9)
+[2025-10-23, 03:06:37 UTC] {subprocess.py:92} INFO - Transaction isolation: TRANSACTION_REPEATABLE_READ
+[2025-10-23, 03:06:39 UTC] {subprocess.py:92} INFO - No rows affected (1.504 seconds)
+[2025-10-23, 03:06:43 UTC] {subprocess.py:92} INFO - WARNING: Hive-on-MR is deprecated in Hive 2 and may not be available in the future versions. Consider using a different execution engine (i.e. spark, tez) or using Hive 1.X releases.
+[2025-10-23, 03:06:47 UTC] {subprocess.py:92} INFO - +--------+
+[2025-10-23, 03:06:47 UTC] {subprocess.py:92} INFO - | total  |
+[2025-10-23, 03:06:47 UTC] {subprocess.py:92} INFO - +--------+
+[2025-10-23, 03:06:47 UTC] {subprocess.py:92} INFO - | 2      |
+[2025-10-23, 03:06:47 UTC] {subprocess.py:92} INFO - +--------+
+[2025-10-23, 03:06:47 UTC] {subprocess.py:92} INFO - 1 row selected (8.53 seconds)
+[2025-10-23, 03:06:47 UTC] {subprocess.py:92} INFO - Beeline version 2.3.9 by Apache Hive
+[2025-10-23, 03:06:47 UTC] {subprocess.py:92} INFO - Closing: 0: jdbc:hive2://localhost:10000
+[2025-10-23, 03:06:47 UTC] {subprocess.py:96} INFO - Command exited with return code 0
+[2025-10-23, 03:06:48 UTC] {taskinstance.py:1395} INFO - Marking task as SUCCESS. dag_id=airport_trips_processing, task_id=verifica_tabla_hive, execution_date=20251023T060441, start_date=20251023T060624, end_date=20251023T060648
+[2025-10-23, 03:06:48 UTC] {local_task_job.py:156} INFO - Task exited with return code 0
+[2025-10-23, 03:06:48 UTC] {local_task_job.py:273} INFO - 1 downstream tasks scheduled from follow-on schedule check 
+
