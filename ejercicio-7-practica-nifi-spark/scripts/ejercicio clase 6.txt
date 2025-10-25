@@ -1,0 +1,210 @@
+#In Hadoop enviroment
+enzo@Nitro-Enzo:~$ docker exec -it edvai_hadoop bash
+root@cd7195a9ebf6:/# su hadoop
+hadoop@cd7195a9ebf6:/$
+hadoop@cd7195a9ebf6:/$ hdfs dfs -ls /
+Found 7 items
+drwxr-xr-x   - hadoop supergroup          0 2025-09-21 12:39 /ingest
+drwxr-xr-x   - hadoop supergroup          0 2022-04-26 19:51 /inputs
+drwxr-xr-x   - hadoop supergroup          0 2022-01-22 21:35 /logs
+drwxrwxrwx   - hadoop supergroup          0 2025-10-13 01:40 /nifi
+drwxr-xr-x   - hadoop supergroup          0 2025-09-28 23:41 /sqoop
+drwxrwxr-x   - hadoop supergroup          0 2022-05-02 20:46 /tmp
+drwxr-xr-x   - hadoop supergroup          0 2022-01-23 13:15 /user
+
+#In the nifi container
+
+enzo@Nitro-Enzo:~$ docker exec -it nifi bash
+nifi@acd4fc5c8617:
+
+nifi@acd4fc5c8617:~$ cat <<EOF > /home/nifi/download_parquet.sh
+#!/bin/bash
+mkdir -p /home/nifi/ingest
+
+curl -o /home/nifi/ingest/yellow_tripdata_2021-01.parquet \
+https://data-engineer-edvai-public.s3.amazonaws.com/yellow_tripdata_2021-01.parquet
+
+echo "Archivo descargado en /home/nifi/ingest/"
+EOF
+nifi@acd4fc5c8617:~$ chmod +x /home/nifi/download_parquet.sh
+nifi@acd4fc5c8617:~$ /home/nifi/download_parquet.sh
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 20.6M  100 20.6M    0     0  7320k      0  0:00:02  0:00:02 --:--:-- 7320k
+Archivo descargado en /home/nifi/ingest/
+
+nifi@acd4fc5c8617:~$ chmod +x /home/nifi/download_parquet.sh
+nifi@acd4fc5c8617:~$ /home/nifi/download_parquet.sh
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 20.6M  100 20.6M    0     0  7320k      0  0:00:02  0:00:02 --:--:-- 7320k
+Archivo descargado en /home/nifi/ingest/
+nifi@acd4fc5c8617:~$ ls -l /home/nifi/ingest/
+total 21180
+-rw-r--r-- 1 nifi nifi 21686067 Oct 13 04:53 yellow_tripdata_2021-01.parquet
+
+nifi@acd4fc5c8617:~$ chmod 777 /home/nifi/download_parquet.sh
+nifi@acd4fc5c8617:~$  ls -l /home/nifi/download_parquet.sh
+-rwxrwxrwx 1 nifi nifi 231 Oct 13 04:52 /home/nifi/download_parquet.sh
+
+
+hadoop@cd7195a9ebf6:/$ pyspark
+
+
+Welcome to
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /__ / .__/\_,_/_/ /_/\_\   version 3.2.0
+      /_/
+
+>>> df = spark.read.parquet("hdfs:///nifi/yellow_tripdata_2021-01.parquet")
+>>> df.createOrReplaceTempView("yellow_tripdata")
+>>> df.show()
++--------+--------------------+---------------------+---------------+-------------+----------+------------------+------------+------------+------------+-----------+-----+-------+----------+------------+---------------------+------------+--------------------+-----------+
+|VendorID|tpep_pickup_datetime|tpep_dropoff_datetime|passenger_count|trip_distance|RatecodeID|store_and_fwd_flag|PULocationID|DOLocationID|payment_type|fare_amount|extra|mta_tax|tip_amount|tolls_amount|improvement_surcharge|total_amount|congestion_surcharge|airport_fee|
++--------+--------------------+---------------------+---------------+-------------+----------+------------------+------------+------------+------------+-----------+-----+-------+----------+------------+---------------------+------------+--------------------+-----------+
+|       1| 2020-12-31 21:30:10|  2020-12-31 21:36:12|            1.0|          2.1|       1.0|                 N|         142|          43|           2|        8.0|  3.0|    0.5|       0.0|         0.0|                  0.3|        11.8|                 2.5|       null|
+
+>>> spark.sql("""
+... SELECT VendorID, tpep_pickup_datetime, total_amount
+... FROM yellow_tripdata
+... WHERE total_amount < 10
+... """).show(10)
+
++--------+--------------------+------------+
+|VendorID|tpep_pickup_datetime|total_amount|
++--------+--------------------+------------+
+|       1| 2020-12-31 21:51:20|         4.3|
+|       2| 2020-12-31 21:42:11|         8.3|
+|       2| 2020-12-31 21:04:21|        9.96|
+|       2| 2020-12-31 21:43:41|         9.3|
+|       2| 2020-12-31 21:36:08|         5.8|
+|       1| 2020-12-31 21:03:13|         0.0|
+|       1| 2020-12-31 21:30:32|         9.3|
+|       2| 2020-12-31 21:16:19|         9.8|
+|       2| 2020-12-31 21:57:26|         8.8|
+|       2| 2020-12-31 21:33:33|        9.96|
++--------+--------------------+------------+
+only showing top 10 rows
+
+>>> spark.sql("""
+... SELECT
+...     DATE(tpep_pickup_datetime) AS pickup_date,
+...     SUM(total_amount) AS total_revenue
+... FROM yellow_tripdata
+... GROUP BY DATE(tpep_pickup_datetime)
+... ORDER BY total_revenue DESC
+... LIMIT 10
+... """).show()
+[Stage 3:>                                                          (0 + 2) / 2]
++-----------+-----------------+
+|pickup_date|    total_revenue|
++-----------+-----------------+
+| 2021-01-28|961322.5600002451|
+| 2021-01-22|942205.9300002148|
+| 2021-01-29|937373.5100002222|
+| 2021-01-21|932444.4500002082|
+| 2021-01-15|931628.1900002063|
+| 2021-01-14|926664.0400001821|
+| 2021-01-27|  895259.87000017|
+| 2021-01-19|890581.4500001629|
+| 2021-01-07|887670.1600001527|
+| 2021-01-08| 878002.730000146|
++-----------+-----------------+
+
+>>>
+>>> spark.sql("""
+... SELECT
+...     trip_distance,
+...     total_amount
+... FROM yellow_tripdata
+... WHERE trip_distance > 10
+... ORDER BY total_amount ASC
+... LIMIT 10
+... """).show()
++-------------+------------+
+|trip_distance|total_amount|
++-------------+------------+
+|        12.68|      -252.3|
+|        34.35|     -176.42|
+|        14.75|      -152.8|
+|        33.96|     -127.92|
+|         29.1|      -119.3|
+|        26.94|      -111.3|
+|        20.08|      -107.8|
+|        19.55|      -102.8|
+|        19.16|      -90.55|
+|        25.83|      -88.54|
++-------------+------------+
+
+>>> spark.sql("""
+... SELECT
+...     trip_distance,
+...     tpep_pickup_datetime
+... FROM yellow_tripdata
+senger_count > 2... WHERE passenger_count > 2
+...   AND payment_type = 1
+... """).show(10, truncate=False)
++-------------+--------------------+
+|trip_distance|tpep_pickup_datetime|
++-------------+--------------------+
+|6.11         |2020-12-31 21:15:52 |
+|1.7          |2020-12-31 21:31:06 |
+|3.15         |2020-12-31 21:34:37 |
+|10.74        |2020-12-31 21:19:57 |
+|2.01         |2020-12-31 21:28:07 |
+|2.85         |2020-12-31 21:08:04 |
+|1.68         |2020-12-31 21:22:02 |
+|0.77         |2020-12-31 21:33:33 |
+|0.4          |2020-12-31 21:45:29 |
+|16.54        |2020-12-31 21:36:53 |
++-------------+--------------------+
+only showing top 10 rows
+
+>>> spark.sql("""
+...     SELECT
+count,
+        t...         tpep_pickup_datetime,
+...         trip_distance,
+...         passenger_count,
+...         tip_amount
+...     FROM yellow_tripdata
+p_distance > 10
+...     WHERE trip_distance > 10
+...     ORDER BY tip_amount DESC
+...     LIMIT 7
+... """).show(truncate=False)
++--------------------+-------------+---------------+----------+
+|tpep_pickup_datetime|trip_distance|passenger_count|tip_amount|
++--------------------+-------------+---------------+----------+
+|2021-01-20 08:22:05 |427.7        |1.0            |1140.44   |
+|2021-01-03 08:36:52 |267.7        |1.0            |369.4     |
+|2021-01-12 09:57:36 |326.1        |0.0            |192.61    |
+|2021-01-19 08:38:47 |260.5        |1.0            |149.03    |
+|2021-01-31 20:48:50 |11.1         |0.0            |100.0     |
+|2021-01-01 12:26:43 |14.86        |2.0            |99.0      |
+|2021-01-18 12:50:24 |13.0         |0.0            |90.0      |
++--------------------+-------------+---------------+----------+
+
+>>> spark.sql("""
+...     SELECT
+...         RatecodeID,
+mount) AS total_...         SUM(total_amount) AS total_monto,
+...         AVG(total_amount) AS promedio_monto
+...     FROM yellow_tripdata
+...     WHERE RatecodeID != 6
+...     GROUP BY RatecodeID
+... """).show(truncate=False)
++----------+--------------------+------------------+
+|RatecodeID|total_monto         |promedio_monto    |
++----------+--------------------+------------------+
+|1.0       |1.9496468430212937E7|15.606626116946773|
+|4.0       |90039.93000000082   |74.90842762063296 |
+|3.0       |67363.26000000043   |78.69539719626219 |
+|2.0       |973635.4700000732   |65.52937609369182 |
+|99.0      |1748.0699999999997  |48.55749999999999 |
+|5.0       |255075.08999999086  |48.939963545662096|
++----------+--------------------+------------------+
+
+

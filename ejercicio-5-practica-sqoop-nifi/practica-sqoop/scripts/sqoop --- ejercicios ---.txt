@@ -1,0 +1,495 @@
+sqoop --- ejercicios ---
+
+enzo@Nitro-Enzo:~$  docker exec -it edvai_hadoop bash
+root@cd7195a9ebf6:/# su hadoop
+hadoop@cd7195a9ebf6:/$ 
+
+hadoop@cd7195a9ebf6:/$ sqoop-version
+Warning: /usr/lib/sqoop/../hbase does not exist! HBase imports will fail.
+Please set $HBASE_HOME to the root of your HBase installation.
+Warning: /usr/lib/sqoop/../hcatalog does not exist! HCatalog jobs will fail.
+Please set $HCAT_HOME to the root of your HCatalog installation.
+Warning: /usr/lib/sqoop/../accumulo does not exist! Accumulo imports will fail.
+Please set $ACCUMULO_HOME to the root of your Accumulo installation.
+Warning: /usr/lib/sqoop/../zookeeper does not exist! Accumulo imports will fail.
+Please set $ZOOKEEPER_HOME to the root of your Zookeeper installation.
+2025-09-28 23:06:00,272 INFO sqoop.Sqoop: Running Sqoop version: 1.4.7
+Sqoop 1.4.7
+git commit id 2328971411f57f0cb683dfb79d19d4d19d185dd8
+Compiled by maugli on Thu Dec 21 15:59:58 STD 2017
+
+// Aca busacamos el puerto y el IP del contenedor de Postgres con el que queremos conectar (esto lo ejecutamos en otra terminal)
+enzo@Nitro-Enzo:~$ docker inspect edvai_postgres
+[
+    {
+        "Id": "1525bfe9dac6b9fcefdf16795b074cc5be01f102f32a557f420a443083e16a29",
+        "Created": "2025-09-03T03:13:22.100935535Z",
+        "Path": "docker-entrypoint.sh",
+        "Args": [
+            "postgres"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 14162,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2025-09-29T02:03:39.559123077Z",
+            "FinishedAt": "2025-09-23T02:07:11.469287157Z"
+        },
+        "Image": "sha256:87d0479a1e61a77707bd7f734cbdb64e56d381d8188a58e997bdc45229992bcd",
+        "ResolvConfPath": "/var/lib/docker/containers/1525bfe9dac6b9fcefdf16795b074cc5be01f102f32a557f420a443083e16a29/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/1525bfe9dac6b9fcefdf16795b074cc5be01f102f32a557f420a443083e16a29/hostname",
+        "HostsPath": "/var/lib/docker/containers/1525bfe9dac6b9fcefdf16795b074cc5be01f102f32a557f420a443083e16a29/hosts",
+        "LogPath": "/var/lib/docker/containers/1525bfe9dac6b9fcefdf16795b074cc5be01f102f32a557f420a443083e16a29/1525bfe9dac6b9fcefdf16795b074cc5be01f102f32a557f420a443083e16a29-json.log",
+        "Name": "/edvai_postgres",
+        "RestartCount": 0,
+        "Driver": "overlayfs",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "bridge",
+            "PortBindings": {
+                "5432/tcp": [
+                    {
+                        "HostIp": "",
+                        "HostPort": "5432"
+                    }
+                ]
+            },
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                30,
+                120
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "host",
+            "Dns": [],
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": false,
+            "PidsLimit": null,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": null,
+            "Name": "overlayfs"
+        },
+        "Mounts": [
+            {
+                "Type": "volume",
+                "Name": "79eab2740afa47a7305fb5a8c0f25077e218a4cf0a44bb5a215c88db69623944",
+                "Source": "/var/lib/docker/volumes/79eab2740afa47a7305fb5a8c0f25077e218a4cf0a44bb5a215c88db69623944/_data",
+                "Destination": "/var/lib/postgresql/data",
+                "Driver": "local",
+                "Mode": "",
+                "RW": true,
+                "Propagation": ""
+            }
+        ],
+        "Config": {
+            "Hostname": "1525bfe9dac6",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "5432/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "POSTGRES_PASSWORD=edvai",
+                "PGDATA=/var/lib/postgresql/pgdata",
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/postgresql/15/bin",
+                "GOSU_VERSION=1.14",
+                "LANG=en_US.utf8",
+                "PG_MAJOR=15",
+                "PG_VERSION=15.1-1.pgdg110+1"
+            ],
+            "Cmd": [
+                "postgres"
+            ],
+            "Image": "fedepineyro/edvai_postgres:v1",
+            "Volumes": {
+                "/var/lib/postgresql/data": {}
+            },
+            "WorkingDir": "",
+            "Entrypoint": [
+                "docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "desktop.docker.io/wsl-distro": "Debian"
+            },
+            "StopSignal": "SIGINT"
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "e67da2c23e4909e3d319800d2d9adea908d2c755fa0c4929b9df6654f3874210",
+            "SandboxKey": "/var/run/docker/netns/e67da2c23e49",
+            "Ports": {
+                "5432/tcp": [
+                    {
+                        "HostIp": "0.0.0.0",
+                        "HostPort": "5432"
+                    },
+                    {
+                        "HostIp": "::",
+                        "HostPort": "5432"
+                    }
+                ]
+            },
+            "HairpinMode": false,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "SecondaryIPAddresses": null,
+            "SecondaryIPv6Addresses": null,
+            "EndpointID": "c08c083795a16035407e60ffb4c48ec783f36d1f73f1b29d4668ec80f93a1fe3",
+            "Gateway": "172.17.0.1",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "IPAddress": "172.17.0.4",
+            "IPPrefixLen": 16,
+            "IPv6Gateway": "",
+            "MacAddress": "6a:98:18:d2:15:cb",
+            "Networks": {
+                "bridge": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "MacAddress": "6a:98:18:d2:15:cb",
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "45386b72c49f7dae9cdd73325c0dd2382b444efe0cb0f12ab8b35bfd54229029",
+                    "EndpointID": "c08c083795a16035407e60ffb4c48ec783f36d1f73f1b29d4668ec80f93a1fe3",
+                    "Gateway": "172.17.0.1",
+                    "IPAddress": "172.17.0.4",
+                    "IPPrefixLen": 16,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": null
+                }
+            }
+        },
+        "ImageManifestDescriptor": {
+            "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+            "digest": "sha256:87d0479a1e61a77707bd7f734cbdb64e56d381d8188a58e997bdc45229992bcd",
+            "size": 3250,
+            "platform": {
+                "architecture": "amd64",
+                "os": "linux"
+            }
+        }
+    }
+]
+
+hadoop@cd7195a9ebf6:/$ sqoop list-tables --connect jdbc:postgresql://172.17.0.1:5432/northwind --username postgres -P
+Warning: /usr/lib/sqoop/../hbase does not exist! HBase imports will fail.
+Please set $HBASE_HOME to the root of your HBase installation.
+Warning: /usr/lib/sqoop/../hcatalog does not exist! HCatalog jobs will fail.
+Please set $HCAT_HOME to the root of your HCatalog installation.
+Warning: /usr/lib/sqoop/../accumulo does not exist! Accumulo imports will fail.
+Please set $ACCUMULO_HOME to the root of your Accumulo installation.
+Warning: /usr/lib/sqoop/../zookeeper does not exist! Accumulo imports will fail.
+Please set $ZOOKEEPER_HOME to the root of your Zookeeper installation.
+2025-09-28 23:34:08,343 INFO sqoop.Sqoop: Running Sqoop version: 1.4.7
+Enter password:
+2025-09-28 23:34:11,139 INFO manager.SqlManager: Using default fetchSize of 1000
+territories
+order_details
+employee_territories
+us_states
+customers
+orders
+employees
+shippers
+products
+categories
+suppliers
+region
+customer_demographics
+customer_customer_demo
+
+hadoop@cd7195a9ebf6:/$ sqoop eval --connect jdbc:postgresql://172.17.0.1:5432/northwind --username postgres --P --query "select * from region limit 10"
+Warning: /usr/lib/sqoop/../hbase does not exist! HBase imports will fail.
+Please set $HBASE_HOME to the root of your HBase installation.
+Warning: /usr/lib/sqoop/../hcatalog does not exist! HCatalog jobs will fail.
+Please set $HCAT_HOME to the root of your HCatalog installation.
+Warning: /usr/lib/sqoop/../accumulo does not exist! Accumulo imports will fail.
+Please set $ACCUMULO_HOME to the root of your Accumulo installation.
+Warning: /usr/lib/sqoop/../zookeeper does not exist! Accumulo imports will fail.
+Please set $ZOOKEEPER_HOME to the root of your Zookeeper installation.
+2025-09-28 23:37:49,152 INFO sqoop.Sqoop: Running Sqoop version: 1.4.7
+Enter password:
+2025-09-28 23:37:51,279 INFO manager.SqlManager: Using default fetchSize of 1000
+---------------------------------
+| region_id | region_description   |
+---------------------------------
+| 1      | Eastern              |
+| 2      | Western              |
+| 3      | Northern             |
+| 4      | Southern             |
+| 5      | Central America      |
+---------------------------------
+
+hadoop@cd7195a9ebf6:/$ sqoop import --connect "jdbc:postgresql://172.17.0.1:5432/northwind" --username postgres --table region --m 1 -P --target-dir /sqoop/ingest --as-parquetfile --delete-target-dir
+Warning: /usr/lib/sqoop/../hbase does not exist! HBase imports will fail.
+Please set $HBASE_HOME to the root of your HBase installation.
+Warning: /usr/lib/sqoop/../hcatalog does not exist! HCatalog jobs will fail.
+Please set $HCAT_HOME to the root of your HCatalog installation.
+Warning: /usr/lib/sqoop/../accumulo does not exist! Accumulo imports will fail.
+Please set $ACCUMULO_HOME to the root of your Accumulo installation.
+Warning: /usr/lib/sqoop/../zookeeper does not exist! Accumulo imports will fail.
+Please set $ZOOKEEPER_HOME to the root of your Zookeeper installation.
+2025-09-28 23:40:13,018 INFO sqoop.Sqoop: Running Sqoop version: 1.4.7
+Enter password:
+2025-09-28 23:40:17,069 INFO manager.SqlManager: Using default fetchSize of 1000
+2025-09-28 23:40:17,070 INFO tool.CodeGenTool: Beginning code generation
+2025-09-28 23:40:17,070 INFO tool.CodeGenTool: Will generate java class as codegen_region
+2025-09-28 23:40:17,387 INFO manager.SqlManager: Executing SQL statement: SELECT t.* FROM "region" AS t LIMIT 1
+2025-09-28 23:40:17,451 INFO orm.CompilationManager: HADOOP_MAPRED_HOME is /home/hadoop/hadoop
+Note: /tmp/sqoop-hadoop/compile/d3691dd9d9f3b23d96f49e9533e0a98d/codegen_region.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+2025-09-28 23:40:22,659 INFO orm.CompilationManager: Writing jar file: /tmp/sqoop-hadoop/compile/d3691dd9d9f3b23d96f49e9533e0a98d/codegen_region.jar
+2025-09-28 23:40:23,794 INFO tool.ImportTool: Destination directory /sqoop/ingest is not present, hence not deleting.
+2025-09-28 23:40:23,794 WARN manager.PostgresqlManager: It looks like you are importing from postgresql.
+2025-09-28 23:40:23,795 WARN manager.PostgresqlManager: This transfer can be faster! Use the --direct
+2025-09-28 23:40:23,795 WARN manager.PostgresqlManager: option to exercise a postgresql-specific fast path.
+2025-09-28 23:40:23,805 INFO mapreduce.ImportJobBase: Beginning import of region
+2025-09-28 23:40:23,806 INFO Configuration.deprecation: mapred.job.tracker is deprecated. Instead, use mapreduce.jobtracker.address
+2025-09-28 23:40:23,814 INFO Configuration.deprecation: mapred.jar is deprecated. Instead, use mapreduce.job.jar
+2025-09-28 23:40:23,876 INFO manager.SqlManager: Executing SQL statement: SELECT t.* FROM "region" AS t LIMIT 1
+2025-09-28 23:40:23,878 INFO manager.SqlManager: Executing SQL statement: SELECT t.* FROM "region" AS t LIMIT 1
+2025-09-28 23:40:24,113 WARN spi.Registration: Not loading URI patterns in org.kitesdk.data.spi.hive.Loader
+2025-09-28 23:40:25,562 INFO Configuration.deprecation: mapred.map.tasks is deprecated. Instead, use mapreduce.job.maps
+2025-09-28 23:40:25,809 INFO client.DefaultNoHARMFailoverProxyProvider: Connecting to ResourceManager at /0.0.0.0:8032
+2025-09-28 23:40:27,539 INFO mapreduce.JobResourceUploader: Disabling Erasure Coding for path: /tmp/hadoop-yarn/staging/hadoop/.staging/job_1758997064830_0001
+2025-09-28 23:40:40,734 INFO db.DBInputFormat: Using read commited transaction isolation
+2025-09-28 23:40:41,213 INFO mapreduce.JobSubmitter: number of splits:1
+2025-09-28 23:40:41,513 INFO mapreduce.JobSubmitter: Submitting tokens for job: job_1758997064830_0001
+2025-09-28 23:40:41,513 INFO mapreduce.JobSubmitter: Executing with tokens: []
+2025-09-28 23:40:41,780 INFO conf.Configuration: resource-types.xml not found
+2025-09-28 23:40:41,781 INFO resource.ResourceUtils: Unable to find 'resource-types.xml'.
+2025-09-28 23:40:42,894 INFO impl.YarnClientImpl: Submitted application application_1758997064830_0001
+2025-09-28 23:40:42,945 INFO mapreduce.Job: The url to track the job: http://cd7195a9ebf6:8088/proxy/application_1758997064830_0001/
+2025-09-28 23:40:42,946 INFO mapreduce.Job: Running job: job_1758997064830_0001
+2025-09-28 23:40:55,184 INFO mapreduce.Job: Job job_1758997064830_0001 running in uber mode : false
+2025-09-28 23:40:55,186 INFO mapreduce.Job:  map 0% reduce 0%
+2025-09-28 23:41:02,385 INFO mapreduce.Job:  map 100% reduce 0%
+2025-09-28 23:41:03,401 INFO mapreduce.Job: Job job_1758997064830_0001 completed successfully
+2025-09-28 23:41:03,503 INFO mapreduce.Job: Counters: 33
+        File System Counters
+                FILE: Number of bytes read=0
+                FILE: Number of bytes written=275078
+                FILE: Number of read operations=0
+                FILE: Number of large read operations=0
+                FILE: Number of write operations=0
+                HDFS: Number of bytes read=5052
+                HDFS: Number of bytes written=1867
+                HDFS: Number of read operations=50
+                HDFS: Number of large read operations=0
+                HDFS: Number of write operations=10
+                HDFS: Number of bytes read erasure-coded=0
+        Job Counters
+                Launched map tasks=1
+                Other local map tasks=1
+                Total time spent by all maps in occupied slots (ms)=4718
+                Total time spent by all reduces in occupied slots (ms)=0
+                Total time spent by all map tasks (ms)=4718
+                Total vcore-milliseconds taken by all map tasks=4718
+                Total megabyte-milliseconds taken by all map tasks=7246848
+        Map-Reduce Framework
+                Map input records=5
+                Map output records=5
+                Input split bytes=87
+                Spilled Records=0
+                Failed Shuffles=0
+                Merged Map outputs=0
+                GC time elapsed (ms)=46
+                CPU time spent (ms)=2590
+                Physical memory (bytes) snapshot=265535488
+                Virtual memory (bytes) snapshot=2997968896
+                Total committed heap usage (bytes)=154140672
+                Peak Map Physical memory (bytes)=265535488
+                Peak Map Virtual memory (bytes)=2997968896
+        File Input Format Counters
+                Bytes Read=0
+        File Output Format Counters
+                Bytes Written=0
+2025-09-28 23:41:03,513 INFO mapreduce.ImportJobBase: Transferred 1.8232 KB in 37.9348 seconds (49.216 bytes/sec)
+2025-09-28 23:41:03,518 INFO mapreduce.ImportJobBase: Retrieved 5 records.
+
+hadoop@cd7195a9ebf6:/$ sqoop import --connect "jdbc:postgresql://172.17.0.1:5432/northwind" --username postgres --table region --m 1 -P --target-dir /sqoop/ingest/southern --as-parquetfile --where "region_description = 'Southern'" --delete-target-dir
+Warning: /usr/lib/sqoop/../hbase does not exist! HBase imports will fail.
+Please set $HBASE_HOME to the root of your HBase installation.
+Warning: /usr/lib/sqoop/../hcatalog does not exist! HCatalog jobs will fail.
+Please set $HCAT_HOME to the root of your HCatalog installation.
+Warning: /usr/lib/sqoop/../accumulo does not exist! Accumulo imports will fail.
+Please set $ACCUMULO_HOME to the root of your Accumulo installation.
+Warning: /usr/lib/sqoop/../zookeeper does not exist! Accumulo imports will fail.
+Please set $ZOOKEEPER_HOME to the root of your Zookeeper installation.
+2025-09-28 23:45:13,951 INFO sqoop.Sqoop: Running Sqoop version: 1.4.7
+Enter password:
+2025-09-28 23:45:17,311 INFO manager.SqlManager: Using default fetchSize of 1000
+2025-09-28 23:45:17,312 INFO tool.CodeGenTool: Beginning code generation
+2025-09-28 23:45:17,312 INFO tool.CodeGenTool: Will generate java class as codegen_region
+2025-09-28 23:45:17,650 INFO manager.SqlManager: Executing SQL statement: SELECT t.* FROM "region" AS t LIMIT 1
+2025-09-28 23:45:17,703 INFO orm.CompilationManager: HADOOP_MAPRED_HOME is /home/hadoop/hadoop
+Note: /tmp/sqoop-hadoop/compile/2e126127bc387c0cca7a05cc6a29c667/codegen_region.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+2025-09-28 23:45:19,651 INFO orm.CompilationManager: Writing jar file: /tmp/sqoop-hadoop/compile/2e126127bc387c0cca7a05cc6a29c667/codegen_region.jar
+2025-09-28 23:45:20,481 INFO tool.ImportTool: Destination directory /sqoop/ingest/southern is not present, hence not deleting.
+2025-09-28 23:45:20,482 WARN manager.PostgresqlManager: It looks like you are importing from postgresql.
+2025-09-28 23:45:20,482 WARN manager.PostgresqlManager: This transfer can be faster! Use the --direct
+2025-09-28 23:45:20,482 WARN manager.PostgresqlManager: option to exercise a postgresql-specific fast path.
+2025-09-28 23:45:20,490 INFO mapreduce.ImportJobBase: Beginning import of region
+2025-09-28 23:45:20,491 INFO Configuration.deprecation: mapred.job.tracker is deprecated. Instead, use mapreduce.jobtracker.address
+2025-09-28 23:45:20,499 INFO Configuration.deprecation: mapred.jar is deprecated. Instead, use mapreduce.job.jar
+2025-09-28 23:45:20,561 INFO manager.SqlManager: Executing SQL statement: SELECT t.* FROM "region" AS t LIMIT 1
+2025-09-28 23:45:20,563 INFO manager.SqlManager: Executing SQL statement: SELECT t.* FROM "region" AS t LIMIT 1
+2025-09-28 23:45:20,754 WARN spi.Registration: Not loading URI patterns in org.kitesdk.data.spi.hive.Loader
+2025-09-28 23:45:21,189 INFO Configuration.deprecation: mapred.map.tasks is deprecated. Instead, use mapreduce.job.maps
+2025-09-28 23:45:21,292 INFO client.DefaultNoHARMFailoverProxyProvider: Connecting to ResourceManager at /0.0.0.0:8032
+2025-09-28 23:45:21,699 INFO mapreduce.JobResourceUploader: Disabling Erasure Coding for path: /tmp/hadoop-yarn/staging/hadoop/.staging/job_1758997064830_0002
+2025-09-28 23:45:22,884 INFO db.DBInputFormat: Using read commited transaction isolation
+2025-09-28 23:45:23,345 INFO mapreduce.JobSubmitter: number of splits:1
+2025-09-28 23:45:23,931 INFO mapreduce.JobSubmitter: Submitting tokens for job: job_1758997064830_0002
+2025-09-28 23:45:23,931 INFO mapreduce.JobSubmitter: Executing with tokens: []
+2025-09-28 23:45:24,158 INFO conf.Configuration: resource-types.xml not found
+2025-09-28 23:45:24,159 INFO resource.ResourceUtils: Unable to find 'resource-types.xml'.
+2025-09-28 23:45:24,246 INFO impl.YarnClientImpl: Submitted application application_1758997064830_0002
+2025-09-28 23:45:24,308 INFO mapreduce.Job: The url to track the job: http://cd7195a9ebf6:8088/proxy/application_1758997064830_0002/
+2025-09-28 23:45:24,309 INFO mapreduce.Job: Running job: job_1758997064830_0002
+2025-09-28 23:45:31,446 INFO mapreduce.Job: Job job_1758997064830_0002 running in uber mode : false
+2025-09-28 23:45:31,447 INFO mapreduce.Job:  map 0% reduce 0%
+2025-09-28 23:45:38,597 INFO mapreduce.Job:  map 100% reduce 0%
+2025-09-28 23:45:39,615 INFO mapreduce.Job: Job job_1758997064830_0002 completed successfully
+2025-09-28 23:45:39,697 INFO mapreduce.Job: Counters: 33
+        File System Counters
+                FILE: Number of bytes read=0
+                FILE: Number of bytes written=275294
+                FILE: Number of read operations=0
+                FILE: Number of large read operations=0
+                FILE: Number of write operations=0
+                HDFS: Number of bytes read=5128
+                HDFS: Number of bytes written=1797
+                HDFS: Number of read operations=50
+                HDFS: Number of large read operations=0
+                HDFS: Number of write operations=10
+                HDFS: Number of bytes read erasure-coded=0
+        Job Counters
+                Launched map tasks=1
+                Other local map tasks=1
+                Total time spent by all maps in occupied slots (ms)=4718
+                Total time spent by all reduces in occupied slots (ms)=0
+                Total time spent by all map tasks (ms)=4718
+                Total vcore-milliseconds taken by all map tasks=4718
+                Total megabyte-milliseconds taken by all map tasks=7246848
+        Map-Reduce Framework
+                Map input records=1
+                Map output records=1
+                Input split bytes=87
+                Spilled Records=0
+                Failed Shuffles=0
+                Merged Map outputs=0
+                GC time elapsed (ms)=43
+                CPU time spent (ms)=2830
+                Physical memory (bytes) snapshot=253300736
+                Virtual memory (bytes) snapshot=2987876352
+                Total committed heap usage (bytes)=154140672
+                Peak Map Physical memory (bytes)=253300736
+                Peak Map Virtual memory (bytes)=2987876352
+        File Input Format Counters
+                Bytes Read=0
+        File Output Format Counters
+                Bytes Written=0
+2025-09-28 23:45:39,704 INFO mapreduce.ImportJobBase: Transferred 1.7549 KB in 18.502 seconds (97.1245 bytes/sec)
+2025-09-28 23:45:39,709 INFO mapreduce.ImportJobBase: Retrieved 1 records.
+hadoop@cd7195a9ebf6:/$
