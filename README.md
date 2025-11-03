@@ -79,6 +79,24 @@ data-engineering-exercises-and-practices/
 │   │   └── README.md
 │   ├── ejercicios-resueltos.md               # Resultados completos
 │   └── README.md
+├── ejercicio-9-practica-f1-airflow-hive-spark/ # Práctica F1: Airflow + Hive + Spark
+│   ├── scripts/
+│   │   ├── f1_download_and_ingest.sh        # Script de descarga e ingesta F1
+│   │   ├── process_f1_data.py                # Procesamiento con Spark
+│   │   └── README.md
+│   ├── airflow/
+│   │   ├── f1_processing.py                  # DAG de Airflow
+│   │   └── README.md
+│   ├── hive/
+│   │   ├── f1-setup.sql                      # Scripts SQL de Hive
+│   │   └── README.md
+│   ├── images/                               # Capturas de pantalla
+│   │   ├── describe-external-tables-punto2.png
+│   │   ├── total_drivers.jpg
+│   │   ├── total_constructors.png
+│   │   └── airflow-Graph.png
+│   ├── ejercicios-resueltos.md               # Resultados completos
+│   └── README.md
 └── README.md                                 # Este archivo
 ```
 
@@ -178,6 +196,25 @@ data-engineering-exercises-and-practices/
 - `ejercicio-8-practica-airflow-hive-spark/airflow/airport_trips_processing.py`
 - `ejercicio-8-practica-airflow-hive-spark/hive/hive-setup.sql`
 - `ejercicio-8-practica-airflow-hive-spark/ejercicios-resueltos.md`
+
+### 7️⃣ **Ejercicio 9: Práctica F1: Airflow + Hive + Spark**
+
+**Descripción:** Práctica integral que integra Apache Airflow para orquestación de workflows, Apache Hive para almacenamiento de datos estructurados y Apache Spark para procesamiento distribuido, utilizando datos reales de Formula 1 World Championship (1950-2020).
+
+**Características:**
+- ✅ **Hive**: Base de datos `f1` con 2 tablas externas (driver_results, constructor_results)
+- ✅ **Spark**: Procesamiento distribuido con JOINs y agregaciones
+- ✅ **Airflow**: Orquestación completa del pipeline ETL
+- ✅ **Dataset real**: Formula 1 Data (26,759 resultados, 861 corredores)
+- ✅ **Pipeline automatizado**: Descarga → Procesamiento → Verificación
+- ✅ **Análisis específicos**: Top corredores por puntos y constructores en Spanish GP 1991
+
+**Archivos principales:**
+- `ejercicio-9-practica-f1-airflow-hive-spark/scripts/f1_download_and_ingest.sh`
+- `ejercicio-9-practica-f1-airflow-hive-spark/scripts/process_f1_data.py`
+- `ejercicio-9-practica-f1-airflow-hive-spark/airflow/f1_processing.py`
+- `ejercicio-9-practica-f1-airflow-hive-spark/hive/f1-setup.sql`
+- `ejercicio-9-practica-f1-airflow-hive-spark/ejercicios-resueltos.md`
 
 ---
 
@@ -302,6 +339,32 @@ cd ../
 # Revisar ejercicios-resueltos.md
 ```
 
+### Ejercicio 9: Práctica F1: Airflow + Hive + Spark
+```bash
+# 1. Configurar Hive (base de datos y tablas externas)
+cd ejercicio-9-practica-f1-airflow-hive-spark/hive/
+# Seguir guía en README.md para configuración de Hive
+hive -f f1-setup.sql
+
+# 2. Ejecutar scripts de procesamiento
+cd ../scripts/
+chmod +x f1_download_and_ingest.sh
+chmod +x process_f1_data.py
+./f1_download_and_ingest.sh
+spark-submit process_f1_data.py
+
+# 3. Configurar DAG de Airflow
+cd ../airflow/
+# Copiar f1_processing.py a /home/hadoop/airflow/dags/
+
+# 4. Ejecutar DAG en Airflow
+# Acceder a interfaz web de Airflow y ejecutar DAG manualmente
+
+# 5. Ver resultados completos
+cd ../
+# Revisar ejercicios-resueltos.md
+```
+
 ---
 
 ## 📊 Datos Utilizados
@@ -365,6 +428,29 @@ cd ../
   - **DAG**: `airport_trips_processing`
   - **Tareas**: Descarga → Procesamiento → Verificación
   - **Resultado**: Pipeline automatizado completo
+
+### Ejercicio 9
+- **Hive**: Base de datos y tablas externas
+  - **Base de datos**: `f1`
+  - **Tablas**: `driver_results`, `constructor_results` (EXTERNAL TABLE)
+  - **Formato**: CSV
+  - **Ubicación**: `/user/hive/warehouse/f1.db/driver_results/` y `/user/hive/warehouse/f1.db/constructor_results/`
+- **Spark**: Procesamiento de datos Formula 1
+  - **Fuente**: HDFS `/user/hadoop/f1/raw/` (4 archivos CSV: results, drivers, constructors, races)
+  - **Procesamiento**: PySpark con JOINs y agregaciones
+  - **Punto 4a**: Top corredores por puntos totales (861 corredores)
+  - **Punto 4b**: Constructores en Spanish Grand Prix 1991 (17 constructores)
+  - **Resultado**: Archivos CSV generados para tablas externas
+  - **Formato:** CSV
+- **Airflow**: Orquestación del pipeline
+  - **DAG**: `f1_processing`
+  - **Tareas**: Descarga → Procesamiento → Verificación (2 tablas)
+  - **Resultado**: Pipeline automatizado completo
+- **Fuente de datos**: S3 público
+  - **results.csv**: 26,759 registros
+  - **drivers.csv**: 861 registros
+  - **constructors.csv**: 212 registros
+  - **races.csv**: 1,125 registros
 
 ---
 
