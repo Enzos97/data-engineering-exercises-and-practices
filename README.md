@@ -97,6 +97,24 @@ data-engineering-exercises-and-practices/
 │   │   └── airflow-Graph.png
 │   ├── ejercicios-resueltos.md               # Resultados completos
 │   └── README.md
+├── ejercicio-10-practica-northwind-airflow-sqoop-spark/ # Práctica Northwind: Airflow + Sqoop + Spark
+│   ├── scripts/
+│   │   ├── sqoop_import_clientes.sh          # Import Sqoop de clientes
+│   │   ├── sqoop_import_envios.sh            # Import Sqoop de envíos
+│   │   ├── sqoop_import_order_details.sh     # Import Sqoop de detalles
+│   │   ├── spark_products_sold.py            # Procesamiento Spark: products_sold
+│   │   ├── spark_products_sent.py            # Procesamiento Spark: products_sent
+│   │   └── README.md
+│   ├── airflow/
+│   │   ├── northwind_processing.py           # DAG de Airflow con TaskGroups
+│   │   └── README.md
+│   ├── hive/
+│   │   ├── northwind-setup.sql               # Scripts SQL de Hive
+│   │   └── README.md
+│   ├── images/                               # Capturas de pantalla
+│   │   └── README.md
+│   ├── ejercicios-resueltos.md               # Resultados completos paso a paso
+│   └── README.md
 └── README.md                                 # Este archivo
 ```
 
@@ -215,6 +233,43 @@ data-engineering-exercises-and-practices/
 - `ejercicio-9-practica-f1-airflow-hive-spark/airflow/f1_processing.py`
 - `ejercicio-9-practica-f1-airflow-hive-spark/hive/f1-setup.sql`
 - `ejercicio-9-practica-f1-airflow-hive-spark/ejercicios-resueltos.md`
+
+### 8️⃣ **Ejercicio 10: Práctica Northwind: Airflow + Sqoop + Hive + Spark**
+
+**Descripción:** Práctica completa de ETL que integra Apache Sqoop para ingestión desde PostgreSQL, Apache Hive para almacenamiento de datos estructurados, Apache Spark para procesamiento y análisis, y Apache Airflow con TaskGroups para orquestación avanzada de workflows, utilizando la base de datos Northwind.
+
+**Características:**
+- ✅ **Sqoop**: Ingestión automatizada desde PostgreSQL con JOINs complejos
+- ✅ **Hive**: Base de datos `northwind_analytics` con tablas procesadas
+- ✅ **Spark**: Análisis de datos con filtros y agregaciones
+- ✅ **Airflow**: DAG con TaskGroups (ingest, process, verify)
+- ✅ **Dataset real**: Base de datos Northwind (89 clientes, 2,155 detalles de órdenes)
+- ✅ **Pipeline completo**: 7 ejercicios integrados en un flujo automatizado
+- ✅ **Formato Parquet**: Compresión Snappy para optimización
+- ✅ **Seguridad**: Password almacenada en archivo seguro
+
+**Pipeline ETL:**
+1. **Etapa Ingest** (Sqoop → HDFS):
+   - Clientes con productos vendidos (89 registros)
+   - Órdenes enviadas con información de empresa (809 registros)
+   - Detalles de órdenes (2,155 registros)
+
+2. **Etapa Process** (Spark → Hive):
+   - `products_sold`: Clientes con ventas > promedio (33 registros)
+   - `products_sent`: Pedidos con descuento y cálculo de precios (803 registros)
+
+3. **Etapa Verify** (Hive Beeline):
+   - Verificación de conteos y calidad de datos
+
+**Archivos principales:**
+- `ejercicio-10-practica-northwind-airflow-sqoop-spark/scripts/sqoop_import_clientes.sh`
+- `ejercicio-10-practica-northwind-airflow-sqoop-spark/scripts/sqoop_import_envios.sh`
+- `ejercicio-10-practica-northwind-airflow-sqoop-spark/scripts/sqoop_import_order_details.sh`
+- `ejercicio-10-practica-northwind-airflow-sqoop-spark/scripts/spark_products_sold.py`
+- `ejercicio-10-practica-northwind-airflow-sqoop-spark/scripts/spark_products_sent.py`
+- `ejercicio-10-practica-northwind-airflow-sqoop-spark/airflow/northwind_processing.py`
+- `ejercicio-10-practica-northwind-airflow-sqoop-spark/hive/northwind-setup.sql`
+- `ejercicio-10-practica-northwind-airflow-sqoop-spark/ejercicios-resueltos.md`
 
 ---
 
