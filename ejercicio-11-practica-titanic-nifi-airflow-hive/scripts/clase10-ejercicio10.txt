@@ -1,0 +1,336 @@
+###############################################################
+### EJERCICIO 1: INGESTA LOCAL (SCRIPT BASH)
+### Objetivo: Crear script para descargar titanic.csv a local
+###############################################################
+
+enzo@Nitro-Enzo:~$ docker exec -it nifi bash
+
+nifi@acd4fc5c8617:~$ cd ingest/
+
+nifi@acd4fc5c8617:~/ingest$ ls
+yellow_tripdata_2021-01.parquet
+nifi@acd4fc5c8617:~/ingest$ cd ..
+nifi@acd4fc5c8617:~$ cat <<EOF > /home/nifi/ingest/ingest.sh
+> #!/bin/bash
+
+echo "=== DESCARGANDO ARCHIVO TITANIC.CSV ==="
+echo "Fecha: \$(date)"
+
+# Crear directorio si no existe
+mkdir -p /home/nifi/ingest
+
+# Descargar archivo
+echo "Descargando titanic.csv..."
+curl -o /home/nifi/ingest/titanic.csv \
+https://data-engineer-edvai-public.s3.amazonaws.com/titanic.csv
+
+# Verificar descarga
+if [ \$? -eq 0 ]; then
+    echo "✅ Descarga completada exitosamente"
+    echo "📊 Tamaño del archivo: \$(ls -lh /home/nifi/ingest/titanic.csv | awk '{print \$5}')"
+else
+    echo "❌ Error en la descarga"
+    exit 1
+fi
+
+echo "=== PROCESO COMPLETADO ==="
+EOF
+
+nifi@acd4fc5c8617:~$ chmod +x /home/nifi/ingest/ingest.sh
+
+nifi@acd4fc5c8617:~$ /home/nifi/ingest/ingest.sh
+=== DESCARGANDO ARCHIVO TITANIC.CSV ===
+Fecha: Thu Nov 20 03:42:20 AM UTC 2025
+Descargando titanic.csv...
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 60353  100 60353    0     0  78578      0 --:--:-- --:--:-- --:--:-- 78584
+✅ Descarga completada exitosamente
+📊 Tamaño del archivo: 59K
+=== PROCESO COMPLETADO ===
+
+nifi@acd4fc5c8617:~$  ls -la /home/nifi/ingest/
+total 21252
+drwxr-xr-x 2 nifi nifi     4096 Nov 20 03:42 .
+drwxr-xr-x 1 nifi nifi     4096 Nov 20 03:33 ..
+-rwxr-xr-x 1 nifi nifi      577 Nov 20 03:39 ingest.sh
+-rw-r--r-- 1 nifi nifi    60353 Nov 20 03:42 titanic.csv
+-rw-r--r-- 1 nifi nifi 21686067 Oct 13 04:53 yellow_tripdata_2021-01.parquet
+
+nifi@acd4fc5c8617:~$ head -5 /home/nifi/ingest/titanic.csv
+
+PassengerId,Survived,Pclass,Name,Sex,Age,SibSp,Parch,Ticket,Fare,Cabin,Embarked
+1,0,3,"Braund, Mr. Owen Harris",male,22,1,0,A/5 21171,7.25,,S
+2,1,1,"Cumings, Mrs. John Bradley (Florence Briggs Thayer)",female,38,1,0,PC 17599,71.2833,C85,C
+3,1,3,"Heikkinen, Miss. Laina",female,26,0,0,STON/O2. 3101282,7.925,,S
+4,1,1,"Futrelle, Mrs. Jacques Heath (Lily May Peel)",female,35,1,0,113803,53.1,C123,S
+
+###############################################################
+### EJERCICIOS 2, 3 y 4: PREPARACIÓN DE DIRECTORIOS Y NIFI
+### Objetivo: Crear carpetas para mover el archivo localmente
+###############################################################
+
+nifi@acd4fc5c8617:~$ mkdir -p /home/nifi/bucket
+
+nifi@acd4fc5c8617:~$  mkdir -p /home/nifi/Hadoop
+
+nifi@acd4fc5c8617:~$ cat <<EOF > /home/nifi/hadoop/core-site.xml
+> <?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+
+<configuration>
+        <property>
+                <name>fs.defaultFS</name>
+                <value>hdfs://172.17.0.2:9000</value>
+        </property>
+</configuration>
+EOF
+
+nifi@acd4fc5c8617:~$ cat <<EOF > /home/nifi/hadoop/hdfs-site.xml
+
+> <?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+
+<configuration>
+        <property>
+                <name>dfs.replication</name>
+                <value>1</value>
+        </property>
+
+        <property>
+                <name>dfs.name.dir</name>
+                <value>file:///home/hadoop/hadoopdata/hdfs/namenode</value>
+        </property>
+
+        <property>
+                <name>dfs.data.dir</name>
+                <value>file:///home/hadoop/hadoopdata/hdfs/datanode</value>
+        </property>
+</configuration>
+EOF
+nifi@acd4fc5c8617:~$ ls -la /home/nifi/hadoop/
+total 16
+drwxr-xr-x 2 nifi nifi 4096 Nov 20 03:55 .
+drwxr-xr-x 1 nifi nifi 4096 Nov 20 03:54 ..
+-rw-r--r-- 1 nifi nifi  268 Nov 20 03:54 core-site.xml
+-rw-r--r-- 1 nifi nifi  566 Nov 20 03:55 hdfs-site.xml
+
+################# TERMINAL NUEVA #################
+
+enzo@Nitro-Enzo:~$ docker exec -it edvai_hadoop bash
+
+hadoop@cd7195a9ebf6:/$ cd home/hadoop/ 
+
+hadoop@cd7195a9ebf6:~$ ls
+Notebooks  codegen_region.java  hadoop      hive                 hs_err_pid10724.log  hs_err_pid11254.log  metastore_db  region.java  spark            sqoop
+airflow    derby.log            hadoopdata  hs_err_pid10630.log  hs_err_pid10887.log  landing              nohup.out     scripts      spark-warehouse  yarn-utils.py
+
+hadoop@cd7195a9ebf6:~$ hdfs dfs -mkdir -p /nifi
+
+hadoop@cd7195a9ebf6:~$  hdfs dfs -ls /nifi
+Found 2 items
+-rw-r--r--   1 nifi supergroup       6706 2025-10-13 02:17 /nifi/starwars.avro
+-rw-r--r--   1 nifi supergroup   21686067 2025-10-13 02:26 /nifi/yellow_tripdata_2021-01.parquet
+
+hadoop@cd7195a9ebf6:~$ hdfs dfs -ls /
+Found 7 items
+drwxr-xr-x   - hadoop supergroup          0 2025-09-21 12:39 /ingest
+drwxr-xr-x   - hadoop supergroup          0 2022-04-26 19:51 /inputs
+drwxr-xr-x   - hadoop supergroup          0 2022-01-22 21:35 /logs
+drwxrwxrwx   - hadoop supergroup          0 2025-10-13 02:26 /nifi
+drwxr-xr-x   - hadoop supergroup          0 2025-09-28 23:41 /sqoop
+drwxrwxr-x   - hadoop supergroup          0 2022-05-02 20:46 /tmp
+drwxr-xr-x   - hadoop supergroup          0 2022-01-23 13:15 /user 
+
+hadoop@cd7195a9ebf6:~$  hdfs dfs -chmod 777 /nifi
+hadoop@cd7195a9ebf6:~$ hdfs dfs -ls /
+Found 7 items
+drwxr-xr-x   - hadoop supergroup          0 2025-09-21 12:39 /ingest
+drwxr-xr-x   - hadoop supergroup          0 2022-04-26 19:51 /inputs
+drwxr-xr-x   - hadoop supergroup          0 2022-01-22 21:35 /logs
+drwxrwxrwx   - hadoop supergroup          0 2025-10-13 02:26 /nifi
+drwxr-xr-x   - hadoop supergroup          0 2025-09-28 23:41 /sqoop
+drwxrwxr-x   - hadoop supergroup          0 2022-05-02 20:46 /tmp
+drwxr-xr-x   - hadoop supergroup          0 2022-01-23 13:15 /user
+
+hadoop@cd7195a9ebf6:~$ hdfs dfs -ls /nifi
+Found 3 items
+-rw-r--r--   1 nifi supergroup       6706 2025-10-13 02:17 /nifi/starwars.avro
+-rw-r--r--   1 nifi supergroup      60353 2025-11-20 01:44 /nifi/titanic.csv
+-rw-r--r--   1 nifi supergroup   21686067 2025-10-13 02:26 /nifi/yellow_tripdata_2021-01.parquet
+
+###############################################################
+### EJERCICIO 7 (PARTE 1): HIVE - DDL
+### Objetivo: Crear la tabla donde Airflow guardará los datos
+###############################################################
+
+hadoop@cd7195a9ebf6:~$ hive
+
+hive> CREATE DATABASE IF NOT EXISTS titanic_db;
+OK
+Time taken: 3.707 seconds
+hive> USE titanic_db;
+OK
+Time taken: 0.1 seconds
+hive> CREATE TABLE IF NOT EXISTS titanic_processed (
+    >     PassengerId INT,
+    >     Survived INT,
+    >     Pclass INT,
+    >     Name STRING,
+    >     Sex STRING,
+    >     Age FLOAT,
+    >     Ticket STRING,
+    >     Fare FLOAT,
+    >     Cabin STRING,
+    >     Embarked STRING
+    > )
+    > ROW FORMAT DELIMITED
+    > FIELDS TERMINATED BY ','
+    > STORED AS TEXTFILE;
+OK
+Time taken: 0.671 seconds
+hive> exit
+
+###############################################################
+### EJERCICIO 7 (PARTE 2): AIRFLOW - CREACIÓN DEL DAG
+### Objetivo: Script Python para limpiar datos e insertar en Hive
+###############################################################
+
+hadoop@cd7195a9ebf6:~/airflow$ cd /home/hadoop/airflow/dags
+hadoop@cd7195a9ebf6:~/airflow/dags$ ls
+__pycache__  airport_trips_processing.py  example-DAG.py  f1_processing.py  ingest-transform.py  northwind_processing_dag.py
+hadoop@cd7195a9ebf6:~/airflow/dags$ nano titanic_dag.py
+
+// start script//
+
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from datetime import datetime
+import pandas as pd
+import subprocess
+import os
+
+# Argumentos por defecto
+default_args = {
+    'owner': 'Edvai',
+    'start_date': datetime(2023, 1, 1),
+    'retries': 1,
+}
+
+def procesar_titanic():
+    # --- CONFIGURACIÓN DE RUTAS ---
+    HDFS_CMD = "/home/hadoop/hadoop/bin/hdfs"
+    HIVE_CMD = "/home/hadoop/hive/bin/hive"
+    
+    local_path = "/tmp/titanic_raw.csv"
+    processed_path = "/tmp/titanic_final.csv"
+    
+    print(f"--- Iniciando descarga desde HDFS ---")
+    subprocess.run([HDFS_CMD, "dfs", "-get", "-f", "/nifi/titanic.csv", local_path], check=True)
+    
+    print("--- Cargando Pandas ---")
+    df = pd.read_csv(local_path)
+    
+    # --- NUEVA LÍNEA: Eliminar comas del nombre para evitar error en Hive ---
+    df['Name'] = df['Name'].str.replace(',', '')
+
+    # --- CORRECCIÓN DE TIPOS DE DATOS (EL FIX) ---
+    # Forzamos a que Age y Fare sean numeros. Si hay errores, los convierte en NaN
+    df['Age'] = pd.to_numeric(df['Age'], errors='coerce')
+    df['Fare'] = pd.to_numeric(df['Fare'], errors='coerce')
+    
+    # --- TRANSFORMACIONES (Punto 7) ---
+    
+    # 7a. Remover columnas SibSp y Parch
+    df = df.drop(columns=['SibSp', 'Parch'], errors='ignore')
+    
+    # 7b. Calcular promedio de edad por genero
+    mean_age_men = df[df['Sex'] == 'male']['Age'].mean()
+    mean_age_women = df[df['Sex'] == 'female']['Age'].mean()
+    
+    # Rellenar nulos con los promedios calculados
+    df.loc[(df['Sex'] == 'male') & (df['Age'].isnull()), 'Age'] = mean_age_men
+    df.loc[(df['Sex'] == 'female') & (df['Age'].isnull()), 'Age'] = mean_age_women
+    
+    # 7c. Si Cabina es nulo, dejarlo en 0
+    df['Cabin'] = df['Cabin'].fillna(0)
+    
+    # --- GUARDADO ---
+    
+    print("--- Guardando archivo procesado ---")
+    # Guardamos sin header y sin index para Hive
+    df.to_csv(processed_path, index=False, header=False)
+    
+    print(f"--- Subiendo a HDFS temporalmente ---")
+    hdfs_dest = "/tmp/titanic_final.csv"
+    subprocess.run([HDFS_CMD, "dfs", "-put", "-f", processed_path, hdfs_dest], check=True)
+    
+    print(f"--- Cargando en Hive ---")
+    load_query = f"LOAD DATA INPATH '{hdfs_dest}' OVERWRITE INTO TABLE titanic_db.titanic_processed;"
+    subprocess.run([HIVE_CMD, "-e", load_query], check=True)
+    
+    print("=== Proceso completado exitosamente ===")
+
+with DAG('titanic_processing_dag',
+         default_args=default_args,
+         schedule_interval='@daily',
+         catchup=False) as dag:
+
+    transform_task = PythonOperator(
+        task_id='transform_and_load_hive',
+        python_callable=procesar_titanic
+    )
+
+    transform_task
+
+💾 Guarda en nano:
+Ctrl + O → Enter → Ctrl + X
+
+hadoop@cd7195a9ebf6:~/airflow/dags$ nano titanic_dag.py
+hadoop@cd7195a9ebf6:~/airflow/dags$ chmod -x titanic_dag.py
+hadoop@cd7195a9ebf6:~/airflow/dags$ ls -la titanic_dag.py
+-rw-rw-r-- 1 hadoop hadoop 2508 Nov 20 01:50 titanic_dag.py
+hadoop@cd7195a9ebf6:~/airflow/dags$ python3 /home/hadoop/airflow/dags/titanic_dag.py
+
+hadoop@cd7195a9ebf6:~/airflow/dags$ pip install pandas
+
+###############################################################
+### EJERCICIO 8: CONSULTAS DE NEGOCIO (HIVE)
+### Objetivo: Responder las preguntas usando SQL en Hive
+###############################################################
+
+hadoop@cd7195a9ebf6:~/airflow/dags$ hive -e "SELECT Sex, count(*) as Cantidad FROM titanic_db.titanic_processed WHERE Survived = 1 GROUP BY Sex;"
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+female  233
+male    109
+Time taken: 6.916 seconds, Fetched: 2 row(s)
+
+hadoop@cd7195a9ebf6:~/airflow/dags$ hive -e "SELECT Pclass, count(*) as Cantidad FROM titanic_db.titanic_processed WHERE Survived = 1 GROUP BY Pclass;"
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+1       136
+2       87
+3       119
+Time taken: 6.06 seconds, Fetched: 3 row(s)
+
+hadoop@cd7195a9ebf6:~/airflow/dags$ hive -e "SELECT Name, Age FROM titanic_db.titanic_processed WHERE Survived = 1 AND Age > 0 ORDER BY Age DESC LIMIT 1;"
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+Barkworth Mr. Algernon Henry Wilson     80.0
+Time taken: 6.939 seconds, Fetched: 1 row(s)
+
+hadoop@cd7195a9ebf6:~/airflow/dags$ hive -e "SELECT Name, Age FROM titanic_db.titanic_processed WHERE Survived = 1 AND Age > 0 ORDER BY Age ASC LIMIT 1;"
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+Thomas Master. Assad Alexander  0.42
+Time taken: 5.499 seconds, Fetched: 1 row(s)
+
+
+
+
+

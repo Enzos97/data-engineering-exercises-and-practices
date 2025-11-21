@@ -115,6 +115,24 @@ data-engineering-exercises-and-practices/
 │   │   └── README.md
 │   ├── ejercicios-resueltos.md               # Resultados completos paso a paso
 │   └── README.md
+├── ejercicio-11-practica-titanic-nifi-airflow-hive/ # Práctica Titanic: NiFi + Airflow + Hive
+│   ├── scripts/
+│   │   ├── ingest.sh                         # Script de descarga de titanic.csv
+│   │   └── README.md
+│   ├── nifi/
+│   │   ├── core-site.xml                     # Configuración Hadoop para NiFi
+│   │   ├── hdfs-site.xml                     # Configuración HDFS para NiFi
+│   │   └── README.md
+│   ├── airflow/
+│   │   ├── titanic_dag.py                    # DAG de procesamiento con Pandas
+│   │   └── README.md
+│   ├── hive/
+│   │   ├── titanic-setup.sql                 # Scripts SQL de Hive
+│   │   └── README.md
+│   ├── images/                               # Capturas de pantalla
+│   │   └── README.md
+│   ├── ejercicios-resueltos.md               # Resultados completos paso a paso
+│   └── README.md
 └── README.md                                 # Este archivo
 ```
 
@@ -271,6 +289,49 @@ data-engineering-exercises-and-practices/
 - `ejercicio-10-practica-northwind-airflow-sqoop-spark/hive/northwind-setup.sql`
 - `ejercicio-10-practica-northwind-airflow-sqoop-spark/ejercicios-resueltos.md`
 
+### 9️⃣ **Ejercicio 11: Práctica Titanic: NiFi + Airflow + Hive**
+
+**Descripción:** Práctica completa que integra Apache NiFi para flujo de ingesta de datos, Apache Airflow para procesamiento y transformación con Pandas, y Apache Hive para almacenamiento y análisis SQL, utilizando el dataset del Titanic.
+
+**Características:**
+- ✅ **NiFi**: Flujo completo de ingesta (GetFile → PutFile → GetFile → PutHDFS)
+- ✅ **Airflow**: DAG con transformaciones usando Pandas
+- ✅ **Pandas**: Manipulación de datos (remover columnas, rellenar nulos, promedios)
+- ✅ **Hive**: Almacenamiento estructurado y consultas analíticas
+- ✅ **Dataset real**: Titanic (891 pasajeros)
+- ✅ **Pipeline automatizado**: 8 ejercicios integrados
+- ✅ **Análisis de negocio**: Supervivencia por género, clase, edades
+
+**Pipeline ETL:**
+1. **Descarga** (Script Bash):
+   - Descarga titanic.csv desde S3 a `/home/nifi/ingest`
+
+2. **Ingesta NiFi** (Flujo de 4 procesadores):
+   - GetFile: Lee desde `/home/nifi/ingest`
+   - PutFile: Mueve a `/home/nifi/bucket`
+   - GetFile: Lee desde bucket
+   - PutHDFS: Ingesta en HDFS `/nifi`
+
+3. **Procesamiento Airflow** (Transformaciones Pandas):
+   - Remover columnas: SibSp, Parch
+   - Rellenar edad con promedio por género
+   - Cabin nulo → 0
+   - Limpiar comas en Name
+
+4. **Análisis Hive** (Consultas SQL):
+   - Sobrevivientes por género (male: 109, female: 233)
+   - Sobrevivientes por clase (1ra: 136, 2da: 87, 3ra: 119)
+   - Mayor edad sobreviviente (80 años)
+   - Menor edad sobreviviente (0.42 años)
+
+**Archivos principales:**
+- `ejercicio-11-practica-titanic-nifi-airflow-hive/scripts/ingest.sh`
+- `ejercicio-11-practica-titanic-nifi-airflow-hive/nifi/core-site.xml`
+- `ejercicio-11-practica-titanic-nifi-airflow-hive/nifi/hdfs-site.xml`
+- `ejercicio-11-practica-titanic-nifi-airflow-hive/airflow/titanic_dag.py`
+- `ejercicio-11-practica-titanic-nifi-airflow-hive/hive/titanic-setup.sql`
+- `ejercicio-11-practica-titanic-nifi-airflow-hive/ejercicios-resueltos.md`
+
 ---
 
 ## 🔧 Requisitos Previos
@@ -420,6 +481,45 @@ cd ../
 # Revisar ejercicios-resueltos.md
 ```
 
+### Ejercicio 11: Práctica Titanic: NiFi + Airflow + Hive
+```bash
+# 1. Descargar datos (en contenedor NiFi)
+docker exec -it nifi bash
+/home/nifi/scripts/ingest.sh
+
+# 2. Configurar archivos Hadoop en NiFi
+docker cp core-site.xml nifi:/home/nifi/hadoop/
+docker cp hdfs-site.xml nifi:/home/nifi/hadoop/
+
+# 3. Configurar flujo en NiFi
+# Acceder a https://localhost:8443/nifi
+# Crear procesadores: GetFile → PutFile → GetFile → PutHDFS
+# (Seguir guía en nifi/README.md)
+
+# 4. Preparar HDFS
+docker exec -it edvai_hadoop bash
+hdfs dfs -mkdir -p /nifi
+hdfs dfs -chmod 777 /nifi
+
+# 5. Crear tabla en Hive
+cd ejercicio-11-practica-titanic-nifi-airflow-hive/hive/
+hive -f titanic-setup.sql
+
+# 6. Configurar DAG de Airflow
+cd ../airflow/
+# Copiar titanic_dag.py a /home/hadoop/airflow/dags/
+
+# 7. Ejecutar DAG en Airflow
+airflow dags trigger titanic_processing_dag
+
+# 8. Ejecutar consultas analíticas en Hive
+hive -f /home/hadoop/hive/titanic-setup.sql
+
+# 9. Ver resultados completos
+cd ../
+# Revisar ejercicios-resueltos.md
+```
+
 ---
 
 ## 📊 Datos Utilizados
@@ -507,6 +607,29 @@ cd ../
   - **constructors.csv**: 212 registros
   - **races.csv**: 1,125 registros
 
+### Ejercicio 11
+- **NiFi**: Flujo de ingesta completo
+  - **Descarga**: Script bash con wget desde S3
+  - **Procesamiento**: GetFile → PutFile → GetFile → PutHDFS
+  - **Origen**: `/home/nifi/ingest/titanic.csv`
+  - **Intermedio**: `/home/nifi/bucket/titanic.csv`
+  - **Destino**: `/nifi/titanic.csv` en HDFS
+  - **Formato:** CSV
+- **Airflow + Pandas**: Transformaciones de datos
+  - **Fuente**: HDFS `/nifi/titanic.csv`
+  - **Procesamiento**: Python con Pandas
+  - **Transformaciones**: Remover columnas, rellenar nulos, limpiar datos
+  - **Destino**: Hive `titanic_db.titanic_processed`
+  - **Formato:** CSV → Tabla Hive
+- **Hive**: Almacenamiento y análisis
+  - **Base de datos**: `titanic_db`
+  - **Tablas**: `titanic_raw`, `titanic_processed`
+  - **Formato**: CSV (tabla externa) y Managed table
+  - **Consultas**: 4 análisis de negocio (supervivencia, edades)
+- **Fuente de datos**: S3 público
+  - **titanic.csv**: 891 registros (pasajeros del Titanic)
+  - **URL**: https://data-engineer-edvai-public.s3.amazonaws.com/titanic.csv
+
 ---
 
 ## 🛠️ Tecnologías Utilizadas
@@ -517,6 +640,7 @@ cd ../
 - **NiFi** - Procesamiento de flujos de datos
 - **Apache Spark** - Motor de procesamiento distribuido
 - **PySpark** - API de Python para Spark
+- **Pandas** - Librería de manipulación de datos en Python
 - **Apache Airflow** - Orquestación de workflows
 - **Apache Hive** - Data warehouse y consultas SQL
 - **Google Cloud Storage** - Almacenamiento de objetos en la nube
@@ -550,6 +674,10 @@ cd ../
 - Los DAGs de Airflow permiten orquestación compleja de pipelines ETL
 - Las tablas externas en Hive facilitan la integración con Spark
 - Los filtros específicos en Spark optimizan el procesamiento de grandes datasets
+- NiFi permite crear flujos visuales de procesamiento de datos sin código
+- Pandas es ideal para transformaciones de datos en memoria con datasets pequeños/medianos
+- Los archivos de configuración de Hadoop deben estar accesibles para que NiFi se conecte a HDFS
+- La combinación NiFi + Airflow permite separar ingesta (NiFi) de procesamiento (Airflow)
 
 ---
 
