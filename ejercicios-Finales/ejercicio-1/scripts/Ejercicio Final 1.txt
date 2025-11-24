@@ -1,0 +1,970 @@
+Ejercicio Final 1
+
+enzo@Nitro-Enzo:~$ docker exec -it edvai_hadoop bash
+root@cd7195a9ebf6:/# su hadoop
+hadoop@cd7195a9ebf6:/$ cd /home/hadoop/scripts
+hadoop@cd7195a9ebf6:~/scripts$ ls
+QueryResult.java        download_and_ingest.sh     landing.sh                pyspark_jupyter.sh      spark_products_sold.py         sqoop_import_orders.sh  start-services.sh
+codegen_customers.java  f1_download_and_ingest.sh  process_airport_trips.py  spark-warehouse         sqoop_import_clientes.sh       sqoop_import_simple.sh  transformation.py
+derby.log               ingest.sh                  process_f1_data.py        spark_products_sent.py  sqoop_import_order_details.sh  sqoop_test_simple.sh
+hadoop@cd7195a9ebf6:~/scripts$ nano ingest_vuelos.sh
+
+hadoop@cd7195a9ebf6:~/scripts$ cat <<EOF > ingest_vuelos.sh
+ARCHIVOS ==="
+# Di> #!/bin/bash
+>
+> echo "=== REINTENTANDO DESCARGA DE ARCHIVOS ==="
+>
+> # Directorio destino
+> LANDING_DIR="/home/hadoop/landing"
+> mkdir -p \$LANDING_DIR
+>
+> # 1. Informe 2021 (Ya estaba ok, pero lo aseguramos)
+> wget -c -O "\$LANDING_DIR/2021-informe-ministerio.csv" "https://data-engineer-edvai-public.s3.amazonaws.com/2021-informe-ministerio.csv"
+>
+> # 2. Informe 2022 (Ya estaba ok)
+> wget -c -O "\$LANDING_DIR/202206-informe-ministerio.csv" "https://data-engineer-edvai-public.s3.amazonaws.com/202206-informe-ministerio.csv"
+>
+> # 3. Detalles Aeropuertos (CORREGIDO: usamos guion bajo)
+> echo "⬇️ Descargando Detalles Aeropuertos (URL Corregida)..."
+> wget -O "\$LANDING_DIR/aeropuertos_detalle.csv" "https://data-engineer-edvai-public.s3.amazonaws.com/aeropuertos_detalle.csv"
+>
+> # Verificación final
+> echo "📊 Listado de archivos descargados:"
+> ls -lh \$LANDING_DIR
+> EOF
+hadoop@cd7195a9ebf6:~/scripts$ ./ingest_vuelos.sh
+
+hadoop@cd7195a9ebf6:~/scripts$ cd /home/hadoop/landing
+hadoop@cd7195a9ebf6:~/landing$ ls
+2021-informe-ministerio.csv  202206-informe-ministerio.csv  aeropuertos_detalle.csv  yellow_tripdata_2021-01.csv
+
+hadoop@cd7195a9ebf6:~/landing$ cd /home/hadoop/scripts
+hadoop@cd7195a9ebf6:~/scripts$ nano move_to_hdfs.sh
+
+// start script//
+
+#!/bin/bash
+
+echo "=== MOVIENDO ARCHIVOS A HDFS ==="
+
+# Definir rutas
+LOCAL_DIR="/home/hadoop/landing"
+HDFS_DIR="/ingest"
+
+# 1. Crear directorio en HDFS
+echo "📂 Creando directorio en HDFS: $HDFS_DIR"
+hdfs dfs -mkdir -p $HDFS_DIR
+
+# 2. Copiar archivos (put)
+echo "➡️ Copiando archivos de $LOCAL_DIR a $HDFS_DIR ..."
+hdfs dfs -put -f $LOCAL_DIR/*.csv $HDFS_DIR/
+
+# 3. Verificar carga
+if [ $? -eq 0 ]; then
+    echo "✅ Carga a HDFS exitosa"
+    echo "📊 Archivos en HDFS:"
+    hdfs dfs -ls $HDFS_DIR
+else
+    echo "❌ Error al subir a HDFS"
+    exit 1
+fi
+
+💾 Guarda en nano:
+Ctrl + O → Enter → Ctrl + X
+
+hadoop@cd7195a9ebf6:~/scripts$ chmod +x move_to_hdfs.sh
+hadoop@cd7195a9ebf6:~/scripts$ ./move_to_hdfs.sh
+=== MOVIENDO ARCHIVOS A HDFS ===
+📂 Creando directorio en HDFS: /ingest
+➡️ Copiando archivos de /home/hadoop/landing a /ingest ...
+✅ Carga a HDFS exitosa
+📊 Archivos en HDFS:
+Found 5 items
+-rw-r--r--   1 hadoop supergroup   32322556 2025-11-21 11:12 /ingest/2021-informe-ministerio.csv
+-rw-r--r--   1 hadoop supergroup   22833520 2025-11-21 11:12 /ingest/202206-informe-ministerio.csv
+-rw-r--r--   1 hadoop supergroup     136007 2025-11-21 11:12 /ingest/aeropuertos_detalle.csv
+-rw-r--r--   1 hadoop supergroup       5462 2025-09-21 12:39 /ingest/starwars.csv
+-rw-r--r--   1 hadoop supergroup  125981363 2025-11-21 11:12 /ingest/yellow_tripdata_2021-01.csv
+///////////////// crear tablas ////////////////
+
+enzo@Nitro-Enzo:~$ docker exec -it edvai_hadoop bash
+root@cd7195a9ebf6:/# su hadoop
+hadoop@cd7195a9ebf6:/$ cd /home/hadoop/scripts
+hadoop@cd7195a9ebf6:/$ nano process_aviacion_spark.py
+
+// start script//
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+=====================================================
+Script: process_aviacion_spark.py
+Descripción: Procesa datos de aviación usando PySpark (sin Pandas)
+Autor: Data Engineering Team
+Fecha: 2025-11-22
+EJERCICIO FINAL 1 - Versión PySpark
+=====================================================
+"""
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import (
+    col, lower, regexp_replace, trim, to_date, 
+    when, lit, coalesce, isnan, isnull
+)
+from pyspark.sql.types import IntegerType, FloatType
+import sys
+import re
+
+def normalizar_nombre_columna(nombre):
+    """
+    Normaliza nombres de columnas: minúsculas, sin tildes, sin paréntesis, sin espacios extra
+    """
+    nombre = nombre.lower()
+    # Quitar tildes
+    nombre = nombre.replace('ó', 'o').replace('í', 'i')
+    nombre = nombre.replace('á', 'a').replace('é', 'e')
+    nombre = nombre.replace('ú', 'u').replace('ñ', 'n')
+    # Quitar paréntesis y su contenido
+    nombre = re.sub(r'\s*\([^)]*\)', '', nombre)
+    # Quitar espacios extra
+    nombre = nombre.strip()
+    return nombre
+
+def main():
+    print("\n" + "="*60)
+    print("✈️ PROCESAMIENTO DE DATOS DE AVIACIÓN CON PYSPARK")
+    print("="*60 + "\n")
+    
+    try:
+        # ============================================
+        # 1. CREAR SESIÓN DE SPARK
+        # ============================================
+        print("📊 1. Creando sesión de Spark con Hive...")
+        spark = SparkSession.builder \
+            .appName("AviacionProcessing") \
+            .config("spark.sql.warehouse.dir", "/user/hive/warehouse") \
+            .config("hive.metastore.uris", "thrift://localhost:9083") \
+            .enableHiveSupport() \
+            .getOrCreate()
+        
+        print("✅ Sesión de Spark creada exitosamente\n")
+        
+        # ============================================
+        # 2. LEER ARCHIVOS DESDE HDFS
+        # ============================================
+        print("📂 2. Leyendo archivos desde HDFS...")
+        
+        # Leer archivo 2021
+        df_2021 = spark.read \
+            .option("header", "true") \
+            .option("inferSchema", "true") \
+            .option("delimiter", ";") \
+            .csv("hdfs://172.17.0.2:9000/ingest/2021-informe-ministerio.csv")
+        
+        print(f"✅ Datos 2021 cargados: {df_2021.count()} registros")
+        
+        # Leer archivo 2022
+        df_2022 = spark.read \
+            .option("header", "true") \
+            .option("inferSchema", "true") \
+            .option("delimiter", ";") \
+            .csv("hdfs://172.17.0.2:9000/ingest/202206-informe-ministerio.csv")
+        
+        print(f"✅ Datos 2022 cargados: {df_2022.count()} registros")
+        
+        # Leer detalles de aeropuertos
+        df_aeropuertos = spark.read \
+            .option("header", "true") \
+            .option("inferSchema", "true") \
+            .option("delimiter", ";") \
+            .csv("hdfs://172.17.0.2:9000/ingest/aeropuertos_detalle.csv")
+        
+        print(f"✅ Datos aeropuertos cargados: {df_aeropuertos.count()} registros\n")
+        
+        # ============================================
+        # 3. NORMALIZAR NOMBRES DE COLUMNAS
+        # ============================================
+        print("🔄 3. Normalizando nombres de columnas...")
+        
+        # Normalizar columnas de vuelos 2021
+        for col_name in df_2021.columns:
+            nuevo_nombre = normalizar_nombre_columna(col_name)
+            df_2021 = df_2021.withColumnRenamed(col_name, nuevo_nombre)
+        
+        # Normalizar columnas de vuelos 2022
+        for col_name in df_2022.columns:
+            nuevo_nombre = normalizar_nombre_columna(col_name)
+            df_2022 = df_2022.withColumnRenamed(col_name, nuevo_nombre)
+        
+        # Normalizar columnas de aeropuertos
+        for col_name in df_aeropuertos.columns:
+            nuevo_nombre = normalizar_nombre_columna(col_name)
+            df_aeropuertos = df_aeropuertos.withColumnRenamed(col_name, nuevo_nombre)
+        
+        print("✅ Nombres de columnas normalizados")
+        print(f"   Columnas de vuelos 2021: {df_2021.columns[:5]}...")  # Mostrar primeras 5
+        print()
+        
+        # ============================================
+        # 4. UNIR DATOS DE VUELOS 2021 + 2022
+        # ============================================
+        print("🔄 4. Uniendo datos de vuelos 2021 y 2022...")
+        
+        df_vuelos = df_2021.unionByName(df_2022, allowMissingColumns=True)
+        
+        print(f"✅ Datos unidos: {df_vuelos.count()} registros totales\n")
+        
+        # ============================================
+        # 5. TRANSFORMACIONES EN VUELOS
+        # ============================================
+        print("🔄 5. Aplicando transformaciones a vuelos...")
+        
+        # 5.1. Eliminar columnas innecesarias
+        columnas_a_eliminar = ['inhab', 'fir', 'calidad del dato']
+        for col_name in columnas_a_eliminar:
+            if col_name in df_vuelos.columns:
+                df_vuelos = df_vuelos.drop(col_name)
+        
+        print("   ✅ Columnas innecesarias eliminadas")
+        
+        # 5.2. Filtrar: Excluir vuelos internacionales
+        # Buscar la columna que contenga 'clasificacion'
+        col_clasificacion = None
+        for c in df_vuelos.columns:
+            if 'clasificacion' in c:
+                col_clasificacion = c
+                break
+        
+        if col_clasificacion:
+            registros_antes = df_vuelos.count()
+            df_vuelos = df_vuelos.filter(
+                ~(lower(col(col_clasificacion)) == 'internacional')
+            )
+            registros_despues = df_vuelos.count()
+            print(f"   ✅ Vuelos internacionales excluidos: {registros_antes - registros_despues} eliminados")
+        
+        # 5.3. Rellenar pasajeros null con 0
+        if 'pasajeros' in df_vuelos.columns:
+            df_vuelos = df_vuelos.withColumn(
+                'pasajeros',
+                when(col('pasajeros').isNull(), 0).otherwise(col('pasajeros'))
+            )
+            print("   ✅ Pasajeros null reemplazados por 0")
+        
+        # 5.4. Convertir fecha a formato YYYY-MM-DD
+        if 'fecha' in df_vuelos.columns:
+            df_vuelos = df_vuelos.withColumn(
+                'fecha',
+                to_date(col('fecha'), 'dd/MM/yyyy')
+            )
+            print("   ✅ Fechas convertidas a formato Date\n")
+        
+        # ============================================
+        # 6. SELECCIONAR Y RENOMBRAR COLUMNAS FINALES (VUELOS)
+        # ============================================
+        print("🔄 6. Preparando esquema final para tabla aeropuerto_tabla...")
+        
+        # Mapeo de columnas finales
+        df_vuelos_final = df_vuelos.select(
+            col('fecha'),
+            col('hora utc').alias('horaUTC'),
+            col('clase de vuelo').alias('clase_de_vuelo'),
+            col('clasificacion vuelo').alias('clasificacion_de_vuelo'),
+            col('tipo de movimiento').alias('tipo_de_movimiento'),
+            col('aeropuerto'),
+            col('origen / destino').alias('origen_destino'),
+            col('aerolinea nombre').alias('aerolinea_nombre'),
+            col('aeronave'),
+            col('pasajeros').cast(IntegerType())
+        )
+        
+        print(f"✅ Esquema final preparado: {df_vuelos_final.count()} registros\n")
+        
+        # ============================================
+        # 7. TRANSFORMACIONES EN AEROPUERTOS
+        # ============================================
+        print("🔄 7. Aplicando transformaciones a aeropuertos...")
+        
+        # 7.1. Eliminar columnas innecesarias
+        cols_aero_eliminar = ['coordenadas', 'fir', 'inhab']
+        for col_name in cols_aero_eliminar:
+            if col_name in df_aeropuertos.columns:
+                df_aeropuertos = df_aeropuertos.drop(col_name)
+        
+        print("   ✅ Columnas innecesarias eliminadas")
+        
+        # 7.2. Rellenar distancia_ref null con 0
+        if 'distancia_ref' in df_aeropuertos.columns:
+            df_aeropuertos = df_aeropuertos.withColumn(
+                'distancia_ref',
+                when(col('distancia_ref').isNull(), 0.0)
+                .otherwise(col('distancia_ref').cast(FloatType()))
+            )
+            print("   ✅ distancia_ref null reemplazados por 0\n")
+        
+        # ============================================
+        # 8. PREPARAR ESQUEMA FINAL (AEROPUERTOS)
+        # ============================================
+        print("🔄 8. Preparando esquema final para aeropuerto_detalles_tabla...")
+        
+        # Debug: Mostrar columnas disponibles
+        print(f"   Columnas disponibles en aeropuertos: {df_aeropuertos.columns}")
+        
+        # Mapear columnas reales a las esperadas
+        # Nota: 'local' es el código del aeropuerto en este dataset
+        df_aeropuertos_final = df_aeropuertos.select(
+            col('local').alias('aeropuerto'),  # local = código del aeropuerto
+            col('oaci').alias('oac'),          # oaci → oac (para compatibilidad)
+            col('iata'),
+            col('tipo'),
+            col('denominacion'),
+            col('latitud').alias('coordenadas_latitud'),
+            col('longitud').alias('coordenadas_longitud'),
+            col('elev').cast(FloatType()),
+            col('uom_elev'),
+            col('ref'),
+            col('distancia_ref').cast(FloatType()),
+            col('direccion_ref'),
+            col('condicion'),
+            col('control'),
+            col('region'),
+            col('uso'),
+            col('trafico'),
+            col('sna'),
+            col('concesionado'),
+            col('provincia')
+        )
+        
+        print(f"✅ Esquema final preparado: {df_aeropuertos_final.count()} registros\n")
+        
+        # ============================================
+        # 9. GUARDAR EN HIVE
+        # ============================================
+        print("💾 9. Guardando datos en Hive...")
+        
+        # Usar la base de datos
+        spark.sql("USE aviacion")
+        print("✅ Usando base de datos: aviacion")
+        
+        # Guardar tabla de vuelos
+        df_vuelos_final.write \
+            .mode("overwrite") \
+            .format("hive") \
+            .saveAsTable("aeropuerto_tabla")
+        
+        print("✅ Tabla aeropuerto_tabla guardada")
+        
+        # Guardar tabla de aeropuertos
+        df_aeropuertos_final.write \
+            .mode("overwrite") \
+            .format("hive") \
+            .saveAsTable("aeropuerto_detalles_tabla")
+        
+        print("✅ Tabla aeropuerto_detalles_tabla guardada\n")
+        
+        # ============================================
+        # 10. VERIFICACIÓN
+        # ============================================
+        print("✅ 10. Verificando datos en Hive...")
+        
+        count_vuelos = spark.sql("SELECT COUNT(*) FROM aviacion.aeropuerto_tabla").collect()[0][0]
+        count_aeropuertos = spark.sql("SELECT COUNT(*) FROM aviacion.aeropuerto_detalles_tabla").collect()[0][0]
+        
+        print(f"   📊 Total registros en aeropuerto_tabla: {count_vuelos}")
+        print(f"   📊 Total registros en aeropuerto_detalles_tabla: {count_aeropuertos}\n")
+        
+        # Muestra de datos
+        print("🔍 Muestra de datos en aeropuerto_tabla (primeras 5 filas):")
+        spark.sql("SELECT * FROM aviacion.aeropuerto_tabla LIMIT 5").show(truncate=False)
+        
+        # ============================================
+        # 11. RESUMEN FINAL
+        # ============================================
+        print("\n" + "="*60)
+        print("✅ PROCESAMIENTO COMPLETADO EXITOSAMENTE")
+        print("="*60)
+        print(f"\n📊 Resumen:")
+        print(f"   - Registros de vuelos procesados: {count_vuelos}")
+        print(f"   - Registros de aeropuertos procesados: {count_aeropuertos}")
+        print(f"   - Base de datos: aviacion")
+        print(f"   - Tablas creadas:")
+        print(f"     • aeropuerto_tabla")
+        print(f"     • aeropuerto_detalles_tabla")
+        print("\n🎯 Siguiente paso: Ejecutar consultas SQL (Puntos 5-10)\n")
+        
+        spark.stop()
+        
+    except Exception as e:
+        print(f"\n❌ ERROR durante el procesamiento: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+
+💾 Guarda en nano:
+Ctrl + O → Enter → Ctrl + X
+
+hadoop@cd7195a9ebf6:~/scripts$ chmod +x process_aviacion_spark.py
+hadoop@cd7195a9ebf6:~/scripts$ ./process_aviacion_spark.py
+
+///////////////// En otra ventana HIVE //////////////////
+
+enzo@Nitro-Enzo:~$ docker exec -it edvai_hadoop bash
+root@cd7195a9ebf6:/# su hadoop
+hadoop@cd7195a9ebf6:/$ hive
+
+hive> CREATE DATABASE IF NOT EXISTS aviacion;
+OK
+Time taken: 2.363 seconds
+hive> USE aviacion;
+OK
+Time taken: 0.065 seconds
+hive>
+    > -- Tabla 1: Vuelos (Schema seg??n PDF Pag 2)
+    > CREATE TABLE IF NOT EXISTS aeropuerto_tabla (
+    >     fecha DATE,
+    >     horaUTC STRING,
+    >     clase_de_vuelo STRING,
+    >     clasificacion_de_vuelo STRING,
+    >     tipo_de_movimiento STRING,
+    >     aeropuerto STRING,
+    >     origen_destino STRING,
+    >     aerolinea_nombre STRING,
+    >     aeronave STRING,
+    >     pasajeros INT
+    > )
+    > ROW FORMAT DELIMITED
+    > FIELDS TERMINATED BY ','
+    > STORED AS TEXTFILE
+    > TBLPROPERTIES ("skip.header.line.count"="1");
+OK
+Time taken: 0.712 seconds
+hive>
+    > -- Tabla 2: Detalles Aeropuertos (Schema seg??n PDF Pag 3)
+    > CREATE TABLE IF NOT EXISTS aeropuerto_detalles_tabla (
+    >     aeropuerto STRING,
+    >     oac STRING,
+    >     iata STRING,
+    >     tipo STRING,
+    >     denominacion STRING,
+    >     coordenadas_latitud STRING,
+    >     coordenadas_longitud STRING,
+    >     elev FLOAT,
+    >     uom_elev STRING,
+    >     ref STRING,
+    >     distancia_ref FLOAT,
+    >     direccion_ref STRING,
+    >     condicion STRING,
+    >     control STRING,
+    >     region STRING,
+    >     uso STRING,
+    >     trafico STRING,
+    >     sna STRING,
+    >     concesionado STRING,
+    >     provincia STRING
+    > )
+    > ROW FORMAT DELIMITED
+    > FIELDS TERMINATED BY ','
+    > STORED AS TEXTFILE
+    > TBLPROPERTIES ("skip.header.line.count"="1");
+OK
+Time taken: 0.177 seconds
+hive> show tables;
+OK
+aeropuerto_detalles_tabla
+aeropuerto_tabla
+Time taken: 0.256 seconds, Fetched: 2 row(s)
+hive> exit; 
+
+////////////////////////// para mayor comodidad en otra SHELL - AIRFLOW ////////////////////////////////7
+
+enzo@Nitro-Enzo:~$ docker exec -it edvai_hadoop bash
+root@cd7195a9ebf6:/# su hadoop
+hadoop@cd7195a9ebf6:/$ cd /home/hadoop/airflow/dags
+hadoop@cd7195a9ebf6:~/airflow/dags$ ls
+__pycache__  airport_trips_processing.py  example-DAG.py  f1_processing.py  ingest-transform.py  northwind_processing_dag.py  titanic_dag.py
+hadoop@cd7195a9ebf6:~/airflow/dags$ nano aviacion_dag.py
+
+// start script//
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+=====================================================
+DAG: aviacion_spark_dag.py
+Descripción: Pipeline de procesamiento de datos de aviación usando PySpark
+Autor: Data Engineering Team
+Fecha: 2025-11-22
+EJERCICIO FINAL 1 - Versión PySpark
+=====================================================
+"""
+
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from airflow.operators.dummy import DummyOperator
+from datetime import datetime, timedelta
+
+# Argumentos por defecto
+default_args = {
+    'owner': 'Edvai',
+    'depends_on_past': False,
+    'start_date': datetime(2023, 1, 1),
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}
+
+# Definir el DAG
+with DAG(
+    dag_id='aviacion_processing_spark_dag',
+    default_args=default_args,
+    description='Pipeline ETL de Aviación con PySpark (sin Pandas)',
+    schedule_interval='@daily',
+    start_date=datetime(2023, 1, 1),
+    catchup=False,
+    is_paused_upon_creation=False,
+    tags=['aviacion', 'pyspark', 'etl'],
+) as dag:
+
+    # ============================================
+    # TAREA 1: INICIO
+    # ============================================
+    inicio = DummyOperator(
+        task_id='inicio_proceso',
+    )
+
+    # ============================================
+    # TAREA 2: CREAR BASE DE DATOS Y TABLAS EN HIVE
+    # ============================================
+    crear_tablas_hive = BashOperator(
+        task_id='crear_tablas_hive',
+        bash_command='''
+        export HIVE_HOME=/home/hadoop/hive
+        export HADOOP_HOME=/home/hadoop/hadoop
+        export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+        export PATH=$HIVE_HOME/bin:$HADOOP_HOME/bin:$PATH
+        
+        echo "=== Creando base de datos y tablas en Hive ==="
+        hive -e "
+        CREATE DATABASE IF NOT EXISTS aviacion;
+        
+        USE aviacion;
+        
+        -- Tabla 1: Vuelos
+        CREATE TABLE IF NOT EXISTS aeropuerto_tabla (
+            fecha DATE,
+            horaUTC STRING,
+            clase_de_vuelo STRING,
+            clasificacion_de_vuelo STRING,
+            tipo_de_movimiento STRING,
+            aeropuerto STRING,
+            origen_destino STRING,
+            aerolinea_nombre STRING,
+            aeronave STRING,
+            pasajeros INT
+        )
+        ROW FORMAT DELIMITED
+        FIELDS TERMINATED BY ','
+        STORED AS TEXTFILE
+        TBLPROPERTIES (\"skip.header.line.count\"=\"1\");
+        
+        -- Tabla 2: Detalles Aeropuertos
+        CREATE TABLE IF NOT EXISTS aeropuerto_detalles_tabla (
+            aeropuerto STRING,
+            oac STRING,
+            iata STRING,
+            tipo STRING,
+            denominacion STRING,
+            coordenadas_latitud STRING,
+            coordenadas_longitud STRING,
+            elev FLOAT,
+            uom_elev STRING,
+            ref STRING,
+            distancia_ref FLOAT,
+            direccion_ref STRING,
+            condicion STRING,
+            control STRING,
+            region STRING,
+            uso STRING,
+            trafico STRING,
+            sna STRING,
+            concesionado STRING,
+            provincia STRING
+        )
+        ROW FORMAT DELIMITED
+        FIELDS TERMINATED BY ','
+        STORED AS TEXTFILE
+        TBLPROPERTIES (\"skip.header.line.count\"=\"1\");
+        
+        SHOW TABLES;
+        "
+        echo "=== Tablas creadas o ya existen ==="
+        ''',
+    )
+
+    # ============================================
+    # TAREA 3: PROCESAR DATOS CON PYSPARK
+    # ============================================
+    procesar_datos = BashOperator(
+        task_id='procesar_datos_spark',
+        bash_command='''
+        export SPARK_HOME=/home/hadoop/spark
+        export HADOOP_HOME=/home/hadoop/hadoop
+        export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+        export PATH=$SPARK_HOME/bin:$HADOOP_HOME/bin:$PATH
+        
+        echo "=== Iniciando procesamiento con PySpark ==="
+        spark-submit /home/hadoop/scripts/process_aviacion_spark.py
+        ''',
+    )
+
+    # ============================================
+    # TAREA 4: VERIFICAR DATOS EN HIVE
+    # ============================================
+    verificar_datos = BashOperator(
+        task_id='verificar_datos_hive',
+        bash_command='''
+        export HIVE_HOME=/home/hadoop/hive
+        export HADOOP_HOME=/home/hadoop/hadoop
+        export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+        export PATH=$HIVE_HOME/bin:$HADOOP_HOME/bin:$PATH
+        
+        echo "=== Verificando datos en Hive ==="
+        hive -e "
+        USE aviacion;
+        
+        SELECT COUNT(*) as total_vuelos 
+        FROM aeropuerto_tabla;
+        
+        SELECT COUNT(*) as total_aeropuertos 
+        FROM aeropuerto_detalles_tabla;
+        "
+        ''',
+    )
+
+    # ============================================
+    # TAREA 5: FIN
+    # ============================================
+    fin = DummyOperator(
+        task_id='fin_proceso',
+    )
+
+    # ============================================
+    # FLUJO DEL DAG
+    # ============================================
+    inicio >> crear_tablas_hive >> procesar_datos >> verificar_datos >> fin
+
+
+💾 Guarda en nano:
+Ctrl + O → Enter → Ctrl + X
+
+hadoop@cd7195a9ebf6:~/airflow/dags$ chmod +x aviacion_dag.py
+hadoop@cd7195a9ebf6:~/airflow/dags$ pip install pandas
+
+# ejecutamos el dag en Airflow
+
+///////////////////////////////////Volvemos a la Shell de HIVE /////////////////////////////////
+
+hive> DESCRIBE aeropuerto_tabla;
+OK
+fecha                   date
+horautc                 string
+clase_de_vuelo          string
+clasificacion_de_vuelo  string
+tipo_de_movimiento      string
+aeropuerto              string
+origen_destino          string
+aerolinea_nombre        string
+aeronave                string
+pasajeros               int
+Time taken: 0.223 seconds, Fetched: 10 row(s)
+
+hive> SELECT * FROM aeropuerto_tabla LIMIT 5;
+OK
+aeropuerto_tabla.fecha  aeropuerto_tabla.horautc        aeropuerto_tabla.clase_de_vuelo aeropuerto_tabla.clasificacion_de_vuelo aeropuerto_tabla.tipo_de_movimiento     aeropuerto_tabla.aeropuerto     aeropuerto_tabla.origen_destino  aeropuerto_tabla.aerolinea_nombre       aeropuerto_tabla.aeronave       aeropuerto_tabla.pasajeros
+2021-01-01      00:24   Regular Domestico       Aterrizaje      EZE     GRA     AEROLINEAS ARGENTINAS SA        BO-B737-8MB     70
+2021-01-01      00:26   Regular Domestico       Aterrizaje      EZE     ECA     AEROLINEAS ARGENTINAS SA        BO-737-800      70
+2021-01-01      00:29   Regular Domestico       Aterrizaje      EZE     SAL     AEROLINEAS ARGENTINAS SA        BO-B-737-76N    12
+2021-01-01      00:37   Regular Domestico       Aterrizaje      EZE     TUC     AEROLINEAS ARGENTINAS SA        EMB-ERJ190100IGW        26
+2021-01-01      01:00   Vuelo Privado con Matrícula Nacional    Domestico       Aterrizaje      ROS     PAR     0       PA-PA-28-181    0
+Time taken: 0.215 seconds, Fetched: 5 row(s)
+
+#punto 5
+
+hive> DESCRIBE aviacion.aeropuerto_tabla;
+OK
+col_name        data_type       comment
+fecha                   date
+horautc                 string
+clase_de_vuelo          string
+clasificacion_de_vuelo  string
+tipo_de_movimiento      string
+aeropuerto              string
+origen_destino          string
+aerolinea_nombre        string
+aeronave                string
+pasajeros               int
+Time taken: 1.793 seconds, Fetched: 10 row(s)
+
+#punto 6 
+
+hive> SELECT count(*) as total_vuelos
+    > FROM aviacion.aeropuerto_tabla
+    > WHERE fecha BETWEEN '2021-12-01' AND '2022-01-31';
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+total_vuelos
+57984
+Time taken: 10.495 seconds, Fetched: 1 row(s)
+
+# punto 7
+
+hive> SELECT sum(pasajeros) as total_pasajeros
+    > FROM aviacion.aeropuerto_tabla
+    > WHERE aerolinea_nombre LIKE '%AEROLINEAS ARGENTINAS%'
+    >   AND fecha BETWEEN '2021-01-01' AND '2022-06-30';
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+total_pasajeros
+7484860
+Time taken: 2.827 seconds, Fetched: 1 row(s)
+
+# punto 8 
+
+hive> SELECT
+    >     v.fecha,
+    >     v.horautc,
+    >     v.aeropuerto as codigo_salida,
+    >     a_salida.denominacion as ciudad_salida,
+    >     v.origen_destino as codigo_arribo,
+    >     a_arribo.denominacion as ciudad_arribo,
+    >     v.pasajeros
+    > FROM aviacion.aeropuerto_tabla v
+    > LEFT JOIN aviacion.aeropuerto_detalles_tabla a_salida
+    >     ON v.aeropuerto = a_salida.aeropuerto
+    > LEFT JOIN aviacion.aeropuerto_detalles_tabla a_arribo
+    >     ON v.origen_destino = a_arribo.aeropuerto
+    > WHERE v.fecha BETWEEN '2022-01-01' AND '2022-06-30'
+    > ORDER BY v.fecha DESC
+    > LIMIT 10;
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+v.fecha v.horautc       codigo_salida   ciudad_salida   codigo_arribo   ciudad_arribo   v.pasajeros
+2022-06-30      00:12   JUJ     JUJUY/GOBERNADOR GUZMÁN EZE     EZEIZA/MINISTRO PISTARINI       NULL
+2022-06-30      00:10   OSA     SANTA ROSA      FDO     SAN FERNANDO    NULL
+2022-06-30      21:26   LAR     LA RIOJA/CAP. VICENTE A. ALMONACID      AER     BUENOS AIRES/AEROPARQUE J. NEWBERY      NULL
+2022-06-30      00:17   BAR     SAN CARLOS DE BARILOCHE AER     BUENOS AIRES/AEROPARQUE J. NEWBERY      95
+2022-06-30      00:15   ROS     ROSARIO/ISLAS MALVINAS  ROS     ROSARIO/ISLAS MALVINAS  0
+2022-06-30      00:07   FDO     SAN FERNANDO    CBA     CÓRDOBA/ING. AER. A. L. V. TARAVELLA    NULL
+2022-06-30      00:08   ROS     ROSARIO/ISLAS MALVINAS  FMA     CÓRDOBA/CAPITÁN D. OMAR DARIO GELARDI   48
+2022-06-30      00:17   FDO     SAN FERNANDO    TUC     TUCUMÁN/TENIENTE BENJAMIN MATIENZO      1
+2022-06-30      01:33   LAR     LA RIOJA/CAP. VICENTE A. ALMONACID      AER     BUENOS AIRES/AEROPARQUE J. NEWBERY      NULL
+2022-06-30      00:02   BAR     SAN CARLOS DE BARILOCHE AER     BUENOS AIRES/AEROPARQUE J. NEWBERY      NULL
+Time taken: 35.112 seconds, Fetched: 10 row(s)
+
+# punto 9
+
+hive> SELECT aerolinea_nombre, SUM(pasajeros) as total_pax
+    > FROM aviacion.aeropuerto_tabla
+    > WHERE aerolinea_nombre IS NOT NULL
+    >   AND aerolinea_nombre != '0'
+    > GROUP BY aerolinea_nombre
+    > ORDER BY total_pax DESC
+    > LIMIT 10;
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+aerolinea_nombre        total_pax
+AEROLINEAS ARGENTINAS SA        7484860
+JETSMART AIRLINES S.A.  1511650
+FB LÍNEAS AÉREAS - FLYBONDI     1482473
+AMERICAN JET S.A.       25789
+L.A.D.E.        15074
+BAIRES FLY SA   4960
+LADE    3895
+FUERZA AEREA ARGENTINA  3855
+FUERZA AEREA ARGENTINA (FAA)    3138
+FLYING AMERICA SA       2839
+Time taken: 6.298 seconds, Fetched: 10 row(s)
+
+# punto 10 
+
+hive> SELECT v.aeronave, COUNT(*) as cantidad_despegues
+    > FROM aviacion.aeropuerto_tabla v
+    > JOIN aviacion.aeropuerto_detalles_tabla d ON v.aeropuerto = d.aeropuerto
+    > WHERE (upper(d.provincia) LIKE '%BUENOS AIRES%' OR upper(d.provincia) LIKE '%CAPITAL FEDERAL%')
+    >   AND v.tipo_de_movimiento = 'Despegue'
+    >   AND v.aeronave IS NOT NULL
+    >   AND v.aeronave != '0'
+    > GROUP BY v.aeronave
+    > ORDER BY cantidad_despegues DESC
+    > LIMIT 10;
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+v.aeronave      cantidad_despegues
+EMB-ERJ190100IGW        12470
+CE-150-L        8117
+CE-152  7980
+CE-150-M        6081
+AIB-A320-232    5345
+BO-737-800      4537
+CE-150-J        3012
+CE-150-G        2871
+BO-B737-800     2736
+PA-PA-28-181    2456
+Time taken: 29.438 seconds, Fetched: 10 row(s)
+
+¡Excelente iniciativa! Ordenar todo es la mejor forma de presentar el examen final. Como ya tenemos los datos limpios y cargados en Hive, podemos ejecutar cada punto uno tras otro para capturar los resultados finales ("impresiones de pantalla") y responder las preguntas teóricas.
+
+Aquí tienes la guía paso a paso ordenada del Punto 5 al 13, con las consultas SQL corregidas (basadas en nuestras pruebas anteriores) y las respuestas teóricas sugeridas.
+
+BLOQUE TÉCNICO (SQL EN HIVE)
+Ejecuta estas consultas en tu terminal hive.
+
+5. Verificar tipos de datos (Schema)
+
+Objetivo: Mostrar que fecha es Date/String con formato correcto y pasajeros es Integer.
+
+SQL
+
+DESCRIBE aviacion.aeropuerto_tabla;
+(Captura de pantalla mostrando fecha date y pasajeros int).
+
+6. Cantidad de vuelos (01/12/2021 - 31/01/2022)
+
+Objetivo: Conteo simple por rango de fechas.
+
+SQL
+
+SELECT count(*) as total_vuelos
+FROM aviacion.aeropuerto_tabla
+WHERE fecha BETWEEN '2021-12-01' AND '2022-01-31';
+(Resultado esperado: aprox 57,984).
+
+7. Pasajeros de Aerolíneas Argentinas (01/01/2021 - 30/06/2022)
+Objetivo: Suma de pasajeros.
+
+
+Corrección aplicada: Usamos LIKE porque descubrimos que el nombre viene como "AEROLINEAS ARGENTINAS SA".
+
+SQL
+
+SELECT sum(pasajeros) as total_pasajeros
+FROM aviacion.aeropuerto_tabla
+WHERE aerolinea_nombre LIKE '%AEROLINEAS ARGENTINAS%'
+  AND fecha BETWEEN '2021-01-01' AND '2022-06-30';
+(Resultado esperado: aprox 7,484,860).
+
+8. Tablero de Vuelos con Ciudades (Detalle)
+
+Objetivo: Mostrar nombres de ciudades de origen y destino usando JOINS.
+
+SQL
+
+SELECT 
+    v.fecha, 
+    v.horautc, 
+    v.aeropuerto as codigo_salida, 
+    a_salida.denominacion as ciudad_salida, 
+    v.origen_destino as codigo_arribo, 
+    a_arribo.denominacion as ciudad_arribo, 
+    v.pasajeros
+FROM aviacion.aeropuerto_tabla v
+LEFT JOIN aviacion.aeropuerto_detalles_tabla a_salida 
+    ON v.aeropuerto = a_salida.aeropuerto
+LEFT JOIN aviacion.aeropuerto_detalles_tabla a_arribo 
+    ON v.origen_destino = a_arribo.aeropuerto
+WHERE v.fecha BETWEEN '2022-01-01' AND '2022-06-30'
+ORDER BY v.fecha DESC
+LIMIT 10;
+9. Top 10 Aerolíneas (Pasajeros)
+
+Objetivo: Ranking de aerolíneas con más pasajeros transportados.
+
+SQL
+
+SELECT aerolinea_nombre, SUM(pasajeros) as total_pax
+FROM aviacion.aeropuerto_tabla
+WHERE aerolinea_nombre IS NOT NULL 
+  AND aerolinea_nombre != '0' 
+GROUP BY aerolinea_nombre
+ORDER BY total_pax DESC
+LIMIT 10;
+10. Top 10 Aeronaves (Salidas desde Bs. As.)
+Objetivo: Aeronaves más usadas para despegues desde Buenos Aires.
+
+
+Corrección aplicada: Usamos upper() y eliminamos columnas basura en Python para que el filtro de provincia funcione.
+
+SQL
+
+SELECT v.aeronave, COUNT(*) as cantidad_despegues
+FROM aviacion.aeropuerto_tabla v
+JOIN aviacion.aeropuerto_detalles_tabla d ON v.aeropuerto = d.aeropuerto
+WHERE (upper(d.provincia) LIKE '%BUENOS AIRES%' OR upper(d.provincia) LIKE '%CAPITAL FEDERAL%')
+  AND v.tipo_de_movimiento = 'Despegue'
+  AND v.aeronave IS NOT NULL 
+  AND v.aeronave != '0'
+GROUP BY v.aeronave
+ORDER BY cantidad_despegues DESC
+LIMIT 10;
+BLOQUE TEÓRICO (ANÁLISIS)
+Aquí tienes las respuestas sugeridas para los puntos finales, basadas en lo que experimentamos durante el ejercicio.
+
+# punto 11.
+Datos externos para mejorar el análisis 
+Para enriquecer este dataset de aviación, agregaría:
+
+1 - Datos Meteorológicos: Tablas con condiciones climáticas (viento, niebla, tormentas) por aeropuerto y hora. Permitiría analizar la causa de demoras o cancelaciones.
+
+2 - Calendario de Feriados: Un dataset de feriados nacionales y vacaciones para correlacionar picos de demanda.
+
+# punto 12.
+Conclusiones y Recomendaciones 
+Conclusiones:
+
+La calidad del dato original no esta del todo completa. Encontramos columnas desplazadas (como en la tabla de aeropuertos) y formatos inconsistentes (fechas, nulos en pasajeros).
+
+El procesamiento previo (ETL) fue crítico para normalizar nombres de columnas (tildes) y asegurar tipos de datos válidos.
+
+Recomendaciones:
+
+Implementar reglas de Calidad de Datos (Data Quality) automáticas al inicio del pipeline que rechacen o alerten sobre archivos con esquemas rotos (columnas extra).
+
+Estandarizar los nombres de las aerolíneas en la ingesta (ej: "Aerolineas Argentinas SA" vs "Aerolineas Argentinas") para evitar pérdidas en las agregaciones.
+
+# punto 13. Proponer una arquitectura alternativa (Cloud)
+
+Actualmente usamos una arquitectura On-Premise (Hadoop/Hive/Airflow locales). Las propuestas modernas en la nube serían:
+
+Opción A: AWS (Amazon Web Services)
+
+-Ingesta (Storage): Amazon S3 (Buckets para zonas Raw/Clean).
+
+-Procesamiento (ETL): AWS Glue (Spark Serverless) para limpiar y transformar datos automáticamente.
+
+-Orquestación: MWAA (Managed Workflows for Apache Airflow).
+
+-Data Warehouse: Amazon Athena (consultas directas sobre S3) o Amazon Redshift.
+
+Opción B: GCP (Google Cloud Platform)
+
+-Ingesta (Storage): Google Cloud Storage (GCS).
+
+-Procesamiento (ETL): Cloud Dataflow.
+
+-Orquestación: Cloud Composer (Airflow gestionado, ideal para reutilizar nuestros DAGs).
+
+-Data Warehouse: BigQuery (Serverless SQL), ideal para analítica rápida reemplazando a Hive.
+
+

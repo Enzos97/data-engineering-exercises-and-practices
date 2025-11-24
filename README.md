@@ -133,6 +133,43 @@ data-engineering-exercises-and-practices/
 │   │   └── README.md
 │   ├── ejercicios-resueltos.md               # Resultados completos paso a paso
 │   └── README.md
+├── ejercicios-Finales/                       # ⭐ EJERCICIOS FINALES (Examen)
+│   ├── README.md                             # Índice general de ejercicios finales
+│   ├── ejercicio-1/                          # ✈️ Aviación Civil (Airflow + PySpark + Hive)
+│   │   ├── scripts/
+│   │   │   ├── ingest_aviacion.sh           # Script automatizado de ingest
+│   │   │   └── process_aviacion_spark.py    # Transformaciones PySpark
+│   │   ├── airflow/
+│   │   │   └── aviacion_spark_dag.py        # DAG de Airflow
+│   │   ├── hive/
+│   │   │   └── queries_aviacion.sql         # Consultas SQL de negocio
+│   │   ├── images/                           # Capturas de pantalla
+│   │   ├── README.md                         # Documentación principal
+│   │   ├── SOLUCION_COMPLETA_EJERCICIO_1.md  # Guía paso a paso
+│   │   ├── CONCLUSIONES_Y_ARQUITECTURA.md    # Análisis y arquitectura alternativa
+│   │   └── TESTEAR_EN_HIVE.md                # Instrucciones de testing
+│   ├── ejercicio-2/                          # 🚗 Car Rental Analytics (Airflow + PySpark + Hive)
+│   │   ├── scripts/
+│   │   │   ├── download_data.sh              # Script automatizado de ingest
+│   │   │   └── process_car_rental.py         # Transformaciones PySpark
+│   │   ├── airflow/
+│   │   │   ├── car_rental_parent_dag.py      # DAG Padre (ingesta)
+│   │   │   ├── car_rental_child_dag.py       # DAG Hijo (procesamiento)
+│   │   │   └── README.md
+│   │   ├── hive/
+│   │   │   ├── car_rental_setup.sql          # Setup DB y tabla
+│   │   │   ├── queries.sql                   # Consultas de negocio
+│   │   │   └── README.md
+│   │   ├── images/                           # Capturas de pantalla
+│   │   ├── README.md                         # Documentación principal
+│   │   ├── GUIA_EJECUCION.md                 # Guía detallada paso a paso
+│   │   ├── CONCLUSIONES_Y_ARQUITECTURA.md    # Análisis completo con datos reales
+│   │   └── RESUMEN_PROYECTO.md               # Resumen ejecutivo
+│   └── ejercicio-3-google-skillsboost/       # ☁️ Google Cloud Dataprep (LAB + Arquitectura)
+│       ├── images/
+│       │   └── lab-completed.png             # Captura del LAB completado
+│       ├── README.md                         # 10 preguntas + Arquitectura GCP completa
+│       └── RESPUESTAS_BREVES.md              # Resumen conciso
 └── README.md                                 # Este archivo
 ```
 
@@ -331,6 +368,139 @@ data-engineering-exercises-and-practices/
 - `ejercicio-11-practica-titanic-nifi-airflow-hive/airflow/titanic_dag.py`
 - `ejercicio-11-practica-titanic-nifi-airflow-hive/hive/titanic-setup.sql`
 - `ejercicio-11-practica-titanic-nifi-airflow-hive/ejercicios-resueltos.md`
+
+---
+
+## ⭐ EJERCICIOS FINALES (Examen)
+
+### ✈️ **Ejercicio Final 1: Aviación Civil - Airflow + PySpark + Hive**
+
+**Descripción:** Pipeline ETL completo para procesar datos de aviación argentina usando Apache Airflow para orquestación, PySpark para transformaciones distribuidas (sin Pandas), y Apache Hive para almacenamiento y análisis SQL de datos de vuelos y aeropuertos.
+
+**Características:**
+- ✅ **Dataset**: 143,000 vuelos domésticos argentinos (2021-2022)
+- ✅ **Ingest automatizado**: Script bash para descarga desde S3 a HDFS
+- ✅ **Transformaciones PySpark**: Union de datasets, normalización de columnas, filtrado, JOINs
+- ✅ **Orquestación Airflow**: DAG completo con creación de tablas, procesamiento y verificación
+- ✅ **Análisis SQL**: 6 consultas de negocio (vuelos por periodo, pasajeros por aerolínea, top aeronaves)
+- ✅ **Conclusiones y recomendaciones**: Análisis de mercado, arquitectura alternativa (Híbrida)
+- ✅ **Documentación completa**: 4 archivos markdown con guías paso a paso
+
+**Hallazgos clave:**
+- Aerolíneas Argentinas: 70% del mercado doméstico (7.4M pasajeros)
+- 67,941 vuelos internacionales excluidos del análisis
+- Rating promedio: 4.97/5.0
+- Pipeline completo: ~10 minutos
+
+**Archivos principales:**
+- `ejercicios-Finales/ejercicio-1/README.md` - Documentación principal
+- `ejercicios-Finales/ejercicio-1/scripts/ingest_aviacion.sh` - Ingest automatizado
+- `ejercicios-Finales/ejercicio-1/scripts/process_aviacion_spark.py` - Transformaciones PySpark
+- `ejercicios-Finales/ejercicio-1/airflow/aviacion_spark_dag.py` - DAG de Airflow
+- `ejercicios-Finales/ejercicio-1/hive/queries_aviacion.sql` - Consultas SQL
+- `ejercicios-Finales/ejercicio-1/CONCLUSIONES_Y_ARQUITECTURA.md` - Análisis completo
+
+---
+
+### 🚗 **Ejercicio Final 2: Car Rental Analytics - Airflow (Padre-Hijo) + PySpark + Hive**
+
+**Descripción:** Sistema completo de ETL para análisis de datos de alquileres de automóviles utilizando Apache Spark, Hive y Airflow con **patrón Padre-Hijo** (2 DAGs). Incluye ingesta desde S3, transformaciones complejas, JOIN de datasets y carga en Data Warehouse.
+
+**Características:**
+- ✅ **Dataset**: 4,844 alquileres de vehículos en 50 estados USA (sin Texas)
+- ✅ **Patrón Airflow Padre-Hijo**: DAG Padre (ingesta) dispara DAG Hijo (procesamiento)
+- ✅ **Transformaciones complejas**: Renombrar columnas anidadas, JOIN con georef, filtros
+- ✅ **6 consultas de negocio**: Con datos reales y análisis detallado
+- ✅ **14 recomendaciones estratégicas**: Basadas en insights de datos
+- ✅ **Arquitectura alternativa**: Comparativa Cloud (AWS/GCP) vs On-Premise
+
+**Hallazgos clave:**
+- 🚗 Tesla domina el mercado premium: Model 3 #1 con 288 alquileres (35% del top 10)
+- ⚡ 771 alquileres ecológicos (15.9%), Electric supera Hybrid 2.4:1
+- ⭐ Rating excepcional: 4.98/5.0 en toda la flota
+- 📈 Crecimiento 2010-2015: +269% en volumen, +55% en tarifas
+- 🌴 California lidera mercado ecológico (San Diego #1 con 44 alquileres)
+
+**Archivos principales:**
+- `ejercicios-Finales/ejercicio-2/README.md` - Documentación principal con resultados reales
+- `ejercicios-Finales/ejercicio-2/scripts/download_data.sh` - Ingest automatizado
+- `ejercicios-Finales/ejercicio-2/scripts/process_car_rental.py` - Transformaciones PySpark
+- `ejercicios-Finales/ejercicio-2/airflow/car_rental_parent_dag.py` - DAG Padre
+- `ejercicios-Finales/ejercicio-2/airflow/car_rental_child_dag.py` - DAG Hijo
+- `ejercicios-Finales/ejercicio-2/hive/queries.sql` - Consultas de negocio
+- `ejercicios-Finales/ejercicio-2/CONCLUSIONES_Y_ARQUITECTURA.md` - Análisis con datos reales
+
+**Consultas SQL (resultados reales):**
+1. Alquileres ecológicos rating ≥4: **771** (Electric: 542, Hybrid: 229)
+2. Top 5 estados menos alquileres: Montana (1), West Virginia (3), New Hampshire (3)
+3. Top 10 modelos: Tesla Model 3 (288), Ford Mustang (136), Tesla Model S (122)
+4. Años 2010-2015: **1,788 alquileres** totales, 46 marcas, 302 modelos
+5. Top 5 ciudades ecológicas: San Diego (44), Las Vegas (34), Portland (20)
+6. Reviews por combustible: Hybrid (34.87), Gasoline (31.93), Electric (28.34)
+
+---
+
+### ☁️ **Ejercicio Final 3: Google Cloud Dataprep - LAB + Arquitectura GCP**
+
+**Descripción:** Completar LAB práctico de Google Skills Boost sobre Cloud Dataprep, responder 10 preguntas teóricas sobre la herramienta, y diseñar una arquitectura GCP completa que integre Dataprep con BigQuery, Vertex AI y Looker Studio.
+
+**Características:**
+- ✅ **LAB completado**: "Creating a Data Transformation Pipeline with Cloud Dataprep" (1h 15min)
+- ✅ **10 preguntas respondidas**: Claras y concisas sobre Data Prep de GCP
+- ✅ **Arquitectura GCP completa**: Diseño de pipeline desde ingesta hasta ML/BI
+- ✅ **Sin código (no-code)**: Transformaciones visuales para usuarios de negocio
+- ✅ **Costos estimados**: ~$81/mes para arquitectura propuesta
+
+**Preguntas clave respondidas:**
+1. ¿Para qué se utiliza Data Prep? → Preparación de datos sin código
+2. ¿Qué se puede realizar? → Limpieza, transformaciones, JOIN, filtrado, agregaciones
+3. ¿Por qué reemplazarlo? → PySpark (control), dbt (SQL versionado), Dataflow (streaming)
+4. Casos de uso → Preparación para BigQuery, integración de fuentes, ML
+5. Carga de datos → Cloud Storage, BigQuery, Cloud SQL, Google Sheets
+6. Tipos de datos → CSV, JSON, Parquet, Avro, Excel (hasta 2 TB)
+7. Pasos de limpieza → Importar → Detectar → Transformar → Exportar
+8. Automatización → Scheduling, API, Cloud Composer, Cloud Functions
+9. Visualizaciones → Histogramas, column profile, data quality (EDA básico)
+10. Calidad de datos → Rules (NOT NULL, regex), validación, alertas, monitoreo
+
+**Arquitectura GCP propuesta:**
+
+```
+AWS S3 (Parquet) + Cloud SQL
+         ↓
+    Cloud Storage (GCS)
+         ↓
+    Cloud Dataprep (transformaciones no-code)
+         ↓ (backend: Dataflow)
+     BigQuery (DW particionado)
+         ↓
+    ┌────────┴────────┐
+    ↓                 ↓
+Looker Studio      Vertex AI
+   (BI)       (ML - Regresión Lineal)
+```
+
+**Componentes:**
+- **Ingesta**: Transfer Service (S3→GCS) + Cloud SQL export
+- **Procesamiento**: Cloud Dataprep (filtros, JOIN, limpieza visual)
+- **Almacenamiento**: BigQuery (particionado por fecha)
+- **BI**: Looker Studio (dashboards gratuitos)
+- **ML**: Vertex AI AutoML (regresión lineal para predicción)
+- **Orquestación**: Cloud Composer (Airflow managed)
+
+**Archivos principales:**
+- `ejercicios-Finales/ejercicio-3-google-skillsboost/README.md` - Respuestas detalladas + Arquitectura
+- `ejercicios-Finales/ejercicio-3-google-skillsboost/RESPUESTAS_BREVES.md` - Resumen conciso
+- `ejercicios-Finales/ejercicio-3-google-skillsboost/images/lab-completed.png` - Captura del LAB
+
+**Ventajas de Data Prep:**
+- ✅ Sin código → Usuarios de negocio pueden transformar datos
+- ✅ Visual → Interfaz drag-and-drop intuitiva
+- ✅ Integrado → Nativo con BigQuery, Cloud SQL, GCS
+- ✅ Escalable → Backend Dataflow maneja TB de datos
+- ✅ Económico → Pago por uso (~$15 por 100 GB procesados)
+
+**Costo estimado mensual:** ~$81 (GCS: $2, Dataprep: $15, BigQuery: $9, Looker: $0, Vertex AI: $50)
 
 ---
 

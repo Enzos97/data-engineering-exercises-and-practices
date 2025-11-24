@@ -1,0 +1,1175 @@
+Ejercicio Final 2
+
+////////////////////////////HIVE////////////////////////////
+enzo@Nitro-Enzo:~$ docker exec -it edvai_hadoop bash
+root@cd7195a9ebf6:/# su hadoop
+hadoop@cd7195a9ebf6:/$ hive
+
+hive> CREATE DATABASE IF NOT EXISTS car_rental_db;
+
+hive> USE car_rental_db;
+
+hive> CREATE TABLE IF NOT EXISTS car_rental_analytics (
+    fuelType STRING,
+    rating INT,
+    renterTripsTaken INT,
+    reviewCount INT,
+    city STRING,
+    state_name STRING,
+    owner_id INT,
+    rate_daily INT,
+    make STRING,
+    model STRING,
+    year INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+TBLPROPERTIES ("skip.header.line.count"="0");
+
+hive> SHOW TABLES;
+
+hive> DESCRIBE FORMATTED car_rental_analytics;
+
+hive> SELECT COUNT(*) as total_registros FROM car_rental_analytics;
+
+/////////////////////////////////////// En otra terminal - ejecutar Ingest ////////////////////////////////
+enzo@Nitro-Enzo:~$ docker exec -it edvai_hadoop bash
+root@cd7195a9ebf6:/# su hadoop
+hadoop@cd7195a9ebf6:/$ cd /home/hadoop/scripts
+hadoop@cd7195a9ebf6:~/scripts$ nano download_data.sh
+
+------------- start script ----------------
+
+
+#!/bin/bash
+
+# =====================================================
+# Script: download_data.sh
+# Descripción: Descarga archivos Car Rental y georef desde S3
+# Autor: Data Engineering Team
+# Fecha: 2025-11-22
+# PUNTO 2: Ingest de archivos
+# =====================================================
+
+# Cargar variables de entorno de Hadoop
+export HADOOP_HOME=/home/hadoop/hadoop
+export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64  # Corregido a Java 11
+export PATH=$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$PATH
+
+# Colores para output
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo "=========================================="
+echo "🚗 CAR RENTAL DATA DOWNLOAD"
+echo "=========================================="
+echo ""
+
+# Configuración
+LOCAL_DIR="/tmp/car_rental"
+HDFS_DIR="/car_rental/raw"
+
+# URLs de los archivos
+CAR_RENTAL_URL="https://data-engineer-edvai-public.s3.amazonaws.com/CarRentalData.csv"
+GEOREF_URL="https://data-engineer-edvai-public.s3.amazonaws.com/georef-united-states-of-america-state.csv"
+
+# Nombres de archivos
+CAR_RENTAL_FILE="CarRentalData.csv"
+GEOREF_FILE="georef_usa_states.csv"
+
+echo "📁 Paso 1: Creando directorio temporal..."
+mkdir -p $LOCAL_DIR
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Directorio creado: $LOCAL_DIR${NC}"
+else
+    echo -e "${RED}❌ Error al crear directorio${NC}"
+    exit 1
+fi
+echo ""
+
+echo "📥 Paso 2: Descargando CarRentalData.csv..."
+wget -O $LOCAL_DIR/$CAR_RENTAL_FILE $CAR_RENTAL_URL
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Descarga exitosa: $CAR_RENTAL_FILE${NC}"
+    echo "   📊 Tamaño: $(ls -lh $LOCAL_DIR/$CAR_RENTAL_FILE | awk '{print $5}')"
+    echo "   📋 Líneas: $(wc -l < $LOCAL_DIR/$CAR_RENTAL_FILE)"
+else
+    echo -e "${RED}❌ Error al descargar $CAR_RENTAL_FILE${NC}"
+    exit 1
+fi
+echo ""
+
+echo "📥 Paso 3: Descargando georef USA states..."
+echo "   ⚠️  Usando -O para renombrar archivo (contiene caracteres especiales)"
+wget -P $LOCAL_DIR -O $LOCAL_DIR/$GEOREF_FILE "$GEOREF_URL"
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Descarga exitosa: $GEOREF_FILE${NC}"
+    echo "   📊 Tamaño: $(ls -lh $LOCAL_DIR/$GEOREF_FILE | awk '{print $5}')"
+    echo "   📋 Líneas: $(wc -l < $LOCAL_DIR/$GEOREF_FILE)"
+else
+    echo -e "${RED}❌ Error al descargar $GEOREF_FILE${NC}"
+    exit 1
+fi
+echo ""
+
+echo "🗂️  Paso 4: Verificando archivos descargados..."
+echo "Archivos en $LOCAL_DIR:"
+ls -lh $LOCAL_DIR/
+echo ""
+
+echo "🔍 Paso 5: Vista previa de datos..."
+echo ""
+echo "--- CarRentalData.csv (primeras 2 líneas, primeros 200 caracteres) ---"
+head -2 $LOCAL_DIR/$CAR_RENTAL_FILE | cut -c1-200
+echo ""
+echo "--- georef_usa_states.csv (solo conteo de líneas) ---"
+echo "   Líneas totales: $(wc -l < $LOCAL_DIR/$GEOREF_FILE)"
+echo "   Columnas: $(head -1 $LOCAL_DIR/$GEOREF_FILE | awk -F';' '{print NF}')"
+echo ""
+
+echo "🗑️  Paso 6: Limpiando directorio HDFS si existe..."
+hdfs dfs -rm -r $HDFS_DIR 2>/dev/null
+echo ""
+
+echo "📂 Paso 7: Creando directorio en HDFS..."
+hdfs dfs -mkdir -p $HDFS_DIR
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Directorio HDFS creado: $HDFS_DIR${NC}"
+else
+    echo -e "${RED}❌ Error al crear directorio HDFS${NC}"
+    exit 1
+fi
+echo ""
+
+echo "⬆️  Paso 8: Subiendo archivos a HDFS..."
+echo "   Subiendo $CAR_RENTAL_FILE..."
+hdfs dfs -put $LOCAL_DIR/$CAR_RENTAL_FILE $HDFS_DIR/
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}   ✅ $CAR_RENTAL_FILE subido${NC}"
+else
+    echo -e "${RED}   ❌ Error al subir $CAR_RENTAL_FILE${NC}"
+    exit 1
+fi
+
+echo "   Subiendo $GEOREF_FILE..."
+hdfs dfs -put $LOCAL_DIR/$GEOREF_FILE $HDFS_DIR/
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}   ✅ $GEOREF_FILE subido${NC}"
+else
+    echo -e "${RED}   ❌ Error al subir $GEOREF_FILE${NC}"
+    exit 1
+fi
+echo ""
+
+echo "✅ Paso 9: Verificando archivos en HDFS..."
+hdfs dfs -ls -h $HDFS_DIR
+echo ""
+
+echo "🧹 Paso 10: Limpiando archivos temporales locales..."
+rm -rf $LOCAL_DIR
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Archivos temporales eliminados${NC}"
+else
+    echo -e "${YELLOW}⚠️  No se pudieron eliminar todos los archivos temporales${NC}"
+fi
+echo ""
+
+echo "=========================================="
+echo -e "${GREEN}✅ DESCARGA COMPLETADA EXITOSAMENTE${NC}"
+echo "=========================================="
+echo ""
+echo "📊 Resumen:"
+echo "   - Archivos descargados: 2"
+echo "   - Ubicación HDFS: $HDFS_DIR"
+echo "   - CarRentalData.csv ✅"
+echo "   - georef_usa_states.csv ✅"
+echo ""
+echo "🎯 Siguiente paso: Ejecutar script Spark de procesamiento"
+echo ""
+
+💾 Guarda en nano:
+Ctrl + O → Enter → Ctrl + X
+
+
+chmod +x download_data.sh
+hadoop@cd7195a9ebf6:~/scripts$ ./download_data.sh
+
+////////////////////////////////////// Procesar con Spark /////////////////////////////////////////////
+
+enzo@Nitro-Enzo:~$ docker exec -it edvai_hadoop bash
+root@cd7195a9ebf6:/# su hadoop
+hadoop@cd7195a9ebf6:/$ cd /home/hadoop/scripts
+hadoop@cd7195a9ebf6:~/scripts$ nano process_car_rental.py
+
+---------------start script -----------------
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+=====================================================
+Script: process_car_rental.py
+Descripción: Procesa datos de Car Rental y los carga en Hive
+Autor: Data Engineering Team
+Fecha: 2025-11-22
+PUNTO 3: Transformaciones y carga en Hive
+=====================================================
+"""
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, lower, trim, round as spark_round
+import sys
+
+def main():
+    print("\n" + "="*60)
+    print("🚗 CAR RENTAL DATA PROCESSING")
+    print("="*60 + "\n")
+    
+    try:
+        # ============================================
+        # 1. CREAR SESIÓN DE SPARK
+        # ============================================
+        print("📊 1. Creando sesión de Spark con Hive...")
+        spark = SparkSession.builder \
+            .appName("CarRentalProcessing") \
+            .config("spark.sql.warehouse.dir", "/user/hive/warehouse") \
+            .config("hive.metastore.uris", "thrift://localhost:9083") \
+            .enableHiveSupport() \
+            .getOrCreate()
+        
+        print("✅ Sesión de Spark creada exitosamente\n")
+        
+        # ============================================
+        # 2. LEER ARCHIVO CARRENTALDATA
+        # ============================================
+        print("📂 2. Leyendo CarRentalData.csv desde HDFS...")
+        car_rental_path = "hdfs://172.17.0.2:9000/car_rental/raw/CarRentalData.csv"
+        
+        df_rental = spark.read \
+            .option("header", "true") \
+            .option("inferSchema", "true") \
+            .csv(car_rental_path)
+        
+        print(f"✅ Datos cargados: {df_rental.count()} registros")
+        print(f"📋 Total de columnas: {len(df_rental.columns)}")
+        print("\n🔍 Muestra de datos originales (primeras 3 filas):")
+        df_rental.show(3, truncate=True)
+        
+        # ============================================
+        # 3. LEER ARCHIVO GEOREF USA STATES
+        # ============================================
+        print("\n📂 3. Leyendo georef_usa_states.csv desde HDFS...")
+        georef_path = "hdfs://172.17.0.2:9000/car_rental/raw/georef_usa_states.csv"
+        
+        df_states = spark.read \
+            .option("header", "true") \
+            .option("inferSchema", "true") \
+            .option("delimiter", ";") \
+            .csv(georef_path)
+        
+        print(f"✅ Datos cargados: {df_states.count()} registros")
+        print(f"📋 Total de columnas: {len(df_states.columns)}")
+        print("\n🔍 Muestra de datos originales (primeras 3 filas):")
+        df_states.show(3, truncate=True)
+        
+        # ============================================
+        # 4. TRANSFORMACIÓN: RENOMBRAR COLUMNAS
+        # ============================================
+        print("\n🔄 4. Renombrando columnas (quitar espacios y puntos)...")
+        
+        # Renombrar columnas usando select() con alias() para columnas con puntos
+        df_rental = df_rental.select(
+            col("fuelType").alias("fuelType"),
+            col("rating").alias("rating"),
+            col("renterTripsTaken").alias("renterTripsTaken"),
+            col("reviewCount").alias("reviewCount"),
+            col("`location.city`").alias("city"),
+            col("`location.country`").alias("country"),
+            col("`location.latitude`").alias("lat"),
+            col("`location.longitude`").alias("lng"),
+            col("`location.state`").alias("state"),
+            col("`owner.id`").alias("owner_id"),
+            col("`rate.daily`").alias("rate_daily"),
+            col("`vehicle.make`").alias("make"),
+            col("`vehicle.model`").alias("model"),
+            col("`vehicle.type`").alias("vehicle_type"),
+            col("`vehicle.year`").alias("year")
+        )
+        
+        print("✅ Columnas de CarRentalData renombradas")
+        
+        print("\n🔍 Columnas después del renombrado:")
+        print(f"   {', '.join(df_rental.columns)}")
+        
+        # Verificar que "state" existe ahora
+        if "state" in df_rental.columns:
+            print("✅ Columna 'state' renombrada correctamente")
+        else:
+            print("❌ ERROR: Columna 'state' no encontrada después del renombrado")
+            print(f"   Columnas disponibles: {df_rental.columns}")
+        
+        # Limpiar columnas en georef (seleccionar solo las necesarias)
+        print("\n🔄 Seleccionando columnas relevantes de georef...")
+        
+        # Verificar cantidad de columnas
+        print(f"Columnas disponibles en georef: {len(df_states.columns)} columnas")
+        
+        # Buscar columnas que contengan 'state' o 'code'
+        state_related_cols = [c for c in df_states.columns if 'state' in c.lower() or 'code' in c.lower() or 'postal' in c.lower()]
+        print(f"Columnas relacionadas con estado: {state_related_cols[:3]}...")
+        
+        # Usar la abreviatura postal de USPS (TX, CA, NY, etc.) para hacer el JOIN
+        # No usar "Official Code State" que son números FIPS (1, 2, 4, etc.)
+        df_states = df_states.select(
+            col("`United States Postal Service state abbreviation`").alias("state_code"),
+            col("`Official Name State`").alias("state_name")
+        )
+        
+        print("✅ Columnas de georef seleccionadas y renombradas")
+        
+        # ============================================
+        # 5. TRANSFORMACIÓN: REDONDEAR Y CASTEAR RATING
+        # ============================================
+        print("\n🔄 5. Redondeando y casteando 'rating' a INT...")
+        
+        df_rental = df_rental.withColumn(
+            "rating",
+            spark_round(col("rating")).cast("integer")
+        )
+        
+        print("✅ Rating redondeado y casteado a INT")
+        
+        # ============================================
+        # 6. TRANSFORMACIÓN: ELIMINAR RATING NULO
+        # ============================================
+        print("\n🔄 6. Eliminando registros con rating nulo...")
+        
+        registros_antes = df_rental.count()
+        df_rental = df_rental.filter(col("rating").isNotNull())
+        registros_despues = df_rental.count()
+        registros_eliminados = registros_antes - registros_despues
+        
+        print(f"✅ Registros eliminados: {registros_eliminados}")
+        print(f"   Registros restantes: {registros_despues}")
+        
+        # ============================================
+        # 7. TRANSFORMACIÓN: MINÚSCULAS EN FUELTYPE
+        # ============================================
+        print("\n🔄 7. Convirtiendo 'fuelType' a minúsculas...")
+        
+        df_rental = df_rental.withColumn(
+            "fuelType",
+            lower(trim(col("fuelType")))
+        )
+        
+        print("✅ fuelType convertido a minúsculas")
+        print("\n🔍 Valores únicos de fuelType:")
+        df_rental.select("fuelType").distinct().show(10, truncate=False)
+        
+        # ============================================
+        # 8. TRANSFORMACIÓN: EXCLUIR TEXAS (ANTES DEL JOIN)
+        # ============================================
+        print("\n🔄 8. Excluyendo estado de Texas (antes del JOIN)...")
+        
+        registros_antes = df_rental.count()
+        
+        # Filtrar Texas por código de estado (antes del JOIN es más eficiente)
+        df_rental_sin_texas = df_rental.filter(col("state") != "TX")
+        
+        registros_despues = df_rental_sin_texas.count()
+        registros_eliminados = registros_antes - registros_despues
+        
+        print(f"✅ Registros de Texas eliminados: {registros_eliminados}")
+        print(f"   Registros restantes: {registros_despues}")
+        
+        # ============================================
+        # 9. TRANSFORMACIÓN: JOIN CON GEOREF
+        # ============================================
+        print("\n🔄 9. Realizando JOIN entre car_rental y georef...")
+        
+        # Mostrar muestra de códigos de estado antes del JOIN
+        print("\n🔍 Códigos de estado en car_rental (sample):")
+        df_rental_sin_texas.select("state").distinct().show(10)
+        
+        print("\n🔍 Códigos de estado en georef (sample):")
+        df_states.select("state_code").show(10)
+        
+        # Join usando state y state_code
+        df_joined = df_rental_sin_texas.join(
+            df_states,
+            df_rental_sin_texas["state"] == df_states["state_code"],
+            "left"
+        )
+        
+        print(f"✅ JOIN completado: {df_joined.count()} registros")
+        
+        # Verificar cuántos registros tienen state_name NULL después del JOIN
+        null_state_names = df_joined.filter(col("state_name").isNull()).count()
+        print(f"⚠️  Registros con state_name NULL después del JOIN: {null_state_names}")
+        
+        if null_state_names > 0:
+            print(f"   Esto es normal si no todos los códigos de estado tienen match en georef")
+            print(f"   Estos registros mantendrán state_name como NULL")
+        
+        # ============================================
+        # 10. SELECCIONAR COLUMNAS FINALES
+        # ============================================
+        print("\n🔄 10. Seleccionando columnas finales para Hive...")
+        
+        # Asegurarse de que las columnas existen antes de seleccionar
+        columnas_disponibles = df_joined.columns
+        print(f"   Columnas disponibles después del JOIN: {len(columnas_disponibles)}")
+        
+        df_final = df_joined.select(
+            col("fuelType"),
+            col("rating"),
+            col("renterTripsTaken"),
+            col("reviewCount"),
+            col("city"),
+            col("state_name"),
+            col("owner_id"),
+            col("rate_daily"),
+            col("make"),
+            col("model"),
+            col("year")
+        )
+        
+        print("✅ Columnas finales seleccionadas")
+        print(f"   Total de registros en df_final: {df_final.count()}")
+        print("\n📋 Esquema final:")
+        df_final.printSchema()
+        
+        print("\n🔍 Muestra de datos finales (primeras 5 filas):")
+        df_final.show(5, truncate=True)
+        
+        # ============================================
+        # 11. VERIFICAR CALIDAD DE DATOS
+        # ============================================
+        print("\n📊 11. Verificando calidad de datos...")
+        
+        print(f"   Total de registros: {df_final.count()}")
+        print(f"   Registros con rating nulo: {df_final.filter(col('rating').isNull()).count()}")
+        print(f"   Registros con state_name nulo: {df_final.filter(col('state_name').isNull()).count()}")
+        
+        print("\n📊 Estadísticas de rating:")
+        df_final.select("rating").describe().show()
+        
+        print("\n📊 Top 5 estados por cantidad de registros:")
+        df_final.groupBy("state_name").count().orderBy(col("count").desc()).show(5)
+        
+        # ============================================
+        # 12. INSERTAR EN HIVE
+        # ============================================
+        print("\n💾 12. Insertando datos en Hive...")
+        
+        # Verificar que hay datos para insertar
+        total_a_insertar = df_final.count()
+        if total_a_insertar == 0:
+            print("❌ ERROR: No hay datos para insertar en Hive!")
+            print("   El DataFrame final está vacío.")
+            spark.stop()
+            sys.exit(1)
+        
+        print(f"   Preparando inserción de {total_a_insertar} registros...")
+        
+        # Usar la base de datos
+        spark.sql("USE car_rental_db")
+        print("✅ Usando base de datos: car_rental_db")
+        
+        # Insertar datos (modo overwrite para limpiar datos anteriores)
+        print("   Escribiendo datos en Hive...")
+        df_final.write \
+            .mode("overwrite") \
+            .format("hive") \
+            .saveAsTable("car_rental_analytics")
+        
+        print(f"✅ Datos insertados en tabla: car_rental_analytics ({total_a_insertar} registros)")
+        
+        # ============================================
+        # 13. VERIFICAR INSERCIÓN
+        # ============================================
+        print("\n✅ 13. Verificando inserción en Hive...")
+        
+        df_verificacion = spark.sql("SELECT COUNT(*) as total FROM car_rental_db.car_rental_analytics")
+        total_registros = df_verificacion.collect()[0]["total"]
+        
+        print(f"✅ Total de registros en Hive: {total_registros}")
+        
+        # Mostrar muestra de datos en Hive
+        print("\n🔍 Muestra de datos en Hive (primeras 5 filas):")
+        spark.sql("SELECT * FROM car_rental_db.car_rental_analytics LIMIT 5").show(truncate=True)
+        
+        # ============================================
+        # 14. RESUMEN FINAL
+        # ============================================
+        print("\n" + "="*60)
+        print("✅ PROCESAMIENTO COMPLETADO EXITOSAMENTE")
+        print("="*60)
+        print(f"\n📊 Resumen:")
+        print(f"   - Registros procesados: {total_registros}")
+        print(f"   - Base de datos: car_rental_db")
+        print(f"   - Tabla: car_rental_analytics")
+        print(f"   - Estado Texas excluido: ✅")
+        print(f"   - Rating nulos eliminados: ✅")
+        print(f"   - fuelType en minúsculas: ✅")
+        print(f"   - JOIN con georef: ✅")
+        print("\n🎯 Siguiente paso: Ejecutar consultas SQL en Hive\n")
+        
+        # Cerrar sesión
+        spark.stop()
+        
+    except Exception as e:
+        print(f"\n❌ ERROR durante el procesamiento: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+
+💾 Guarda en nano:
+Ctrl + O → Enter → Ctrl + X
+
+chmod +x process_car_rental.py
+hadoop@cd7195a9ebf6:~/scripts$ spark-submit ./process_car_rental.py
+
+////////////////////////////////////// DAGS - Airflow ///////////////////////////////////////////
+
+enzo@Nitro-Enzo:~$ docker exec -it edvai_hadoop bash
+root@cd7195a9ebf6:/# su hadoop
+hadoop@cd7195a9ebf6:/$ cd /home/hadoop/airflow/dags
+
+hadoop@cd7195a9ebf6:~/airflow/dags$ nano car_rental_parent_dag.py
+
+----------- start script -------------------
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+=====================================================
+DAG: car_rental_parent_dag.py
+Descripción: DAG PADRE - Descarga archivos y llama al DAG hijo
+Autor: Data Engineering Team
+Fecha: 2025-11-22
+PUNTO 4a: DAG Padre que ingiere archivos y llama al DAG hijo
+=====================================================
+"""
+
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+from airflow.operators.dummy import DummyOperator
+
+# Argumentos por defecto
+default_args = {
+    'owner': 'DataEngineering',
+    'depends_on_past': False,
+    'start_date': datetime(2023, 1, 1),
+    'email': ['data-team@carental.com'],
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}
+
+# Definir el DAG
+with DAG(
+    dag_id='car_rental_parent_dag',
+    default_args=default_args,
+    description='DAG PADRE: Descarga datos de Car Rental y dispara procesamiento',
+    schedule_interval=None,  # Ejecutar manualmente
+    start_date=datetime(2023, 1, 1),
+    catchup=False,
+    is_paused_upon_creation=False,  # ✅ Se activa automáticamente
+    tags=['car-rental', 'parent', 'ingest'],
+) as dag:
+
+    # ============================================
+    # TAREA 1: INICIO
+    # ============================================
+    inicio = DummyOperator(
+        task_id='inicio',
+        doc_md="""
+        ## Inicio del Pipeline
+        
+        Este es el DAG PADRE que:
+        1. Descarga los archivos desde S3
+        2. Los sube a HDFS
+        3. Dispara el DAG HIJO para procesamiento
+        """,
+    )
+
+    # ============================================
+    # TAREA 2: CREAR TABLA EN HIVE
+    # ============================================
+    crear_tabla_hive = BashOperator(
+        task_id='crear_tabla_hive',
+        bash_command='''
+        export HIVE_HOME=/home/hadoop/hive
+        export HADOOP_HOME=/home/hadoop/hadoop
+        export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+        export PATH=$HIVE_HOME/bin:$HADOOP_HOME/bin:$PATH
+        
+        echo "=== Creando base de datos y tabla en Hive ==="
+        hive -e "
+        CREATE DATABASE IF NOT EXISTS car_rental_db;
+        
+        USE car_rental_db;
+        
+        CREATE TABLE IF NOT EXISTS car_rental_analytics (
+            fuelType STRING,
+            rating INT,
+            renterTripsTaken INT,
+            reviewCount INT,
+            city STRING,
+            state_name STRING,
+            owner_id INT,
+            rate_daily INT,
+            make STRING,
+            model STRING,
+            year INT
+        )
+        ROW FORMAT DELIMITED
+        FIELDS TERMINATED BY ','
+        STORED AS TEXTFILE;
+        "
+        echo "=== Tabla creada o ya existe ==="
+        ''',
+        doc_md="""
+        ## Crear Base de Datos y Tabla en Hive
+        
+        Crea:
+        - Base de datos: car_rental_db
+        - Tabla: car_rental_analytics
+        
+        Con el schema definido en el punto 1.
+        
+        **Nota:** Usa IF NOT EXISTS, por lo que no falla si ya existe.
+        """,
+    )
+
+    # ============================================
+    # TAREA 3: DESCARGAR ARCHIVOS E INGESTAR A HDFS
+    # ============================================
+    download_and_ingest = BashOperator(
+        task_id='download_and_ingest',
+        bash_command='bash -c \'bash /home/hadoop/scripts/download_data.sh\'',
+        doc_md="""
+        ## Descarga de Archivos y Carga a HDFS
+        
+        Este script:
+        1. Descarga CarRentalData.csv desde S3
+        2. Descarga georef-united-states-of-america-state.csv
+        3. Los sube a HDFS en /car_rental/raw/
+        
+        **Nota:** El segundo archivo se descarga con -O para renombrarlo
+        ya que contiene caracteres especiales en el nombre.
+        
+        El script download_data.sh ya incluye las variables de entorno.
+        """,
+    )
+
+    # ============================================
+    # TAREA 4: VERIFICAR ARCHIVOS EN HDFS
+    # ============================================
+    verificar_hdfs = BashOperator(
+        task_id='verificar_archivos_hdfs',
+        bash_command='''
+        export HADOOP_HOME=/home/hadoop/hadoop
+        export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+        export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+        export PATH=$HADOOP_HOME/bin:$PATH
+        
+        echo "=== Verificando archivos en HDFS ==="
+        hdfs dfs -ls -h /car_rental/raw/
+        ''',
+        doc_md="""
+        ## Verificación de Archivos en HDFS
+        
+        Verifica que los archivos se hayan subido correctamente:
+        - CarRentalData.csv
+        - georef_usa_states.csv
+        """,
+    )
+
+    # ============================================
+    # TAREA 5: TRIGGER DAG HIJO
+    # ============================================
+    trigger_hijo = TriggerDagRunOperator(
+        task_id='trigger_procesamiento',
+        trigger_dag_id='car_rental_child_dag',  # ID del DAG hijo
+        wait_for_completion=False,  # No esperar (más robusto)
+        doc_md="""
+        ## Disparar DAG Hijo
+        
+        Dispara el DAG HIJO (car_rental_child_dag) que:
+        1. Lee los archivos desde HDFS
+        2. Aplica transformaciones
+        3. Hace JOIN
+        4. Carga datos en Hive
+        
+        El DAG hijo se ejecuta independientemente.
+        """,
+    )
+
+    # La verificación de Hive se hace en el DAG hijo
+
+    # ============================================
+    # TAREA 7: FIN
+    # ============================================
+    fin = DummyOperator(
+        task_id='fin',
+        doc_md="""
+        ## Fin del Pipeline
+        
+        Pipeline completado exitosamente:
+        ✅ Archivos descargados
+        ✅ Datos en HDFS
+        ✅ Procesamiento completado
+        ✅ Datos en Hive
+        
+        **Siguiente paso:** Ejecutar consultas SQL (Punto 5)
+        """,
+    )
+
+    # ============================================
+    # DEFINIR FLUJO DE TAREAS
+    # ============================================
+    inicio >> crear_tabla_hive >> download_and_ingest >> verificar_hdfs >> trigger_hijo >> fin
+
+💾 Guarda en nano:
+Ctrl + O → Enter → Ctrl + X
+
+hadoop@cd7195a9ebf6:~/airflow/dags$ nano car_rental_child_dag.py
+
+--------------------start script-----------------------------
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+=====================================================
+DAG: car_rental_child_dag.py
+Descripción: DAG HIJO - Procesa datos y los carga en Hive
+Autor: Data Engineering Team
+Fecha: 2025-11-22
+PUNTO 4b: DAG Hijo que procesa la información y la carga en Hive
+=====================================================
+"""
+
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from airflow.operators.dummy import DummyOperator
+
+# Argumentos por defecto
+default_args = {
+    'owner': 'DataEngineering',
+    'depends_on_past': False,
+    'start_date': datetime(2023, 1, 1),
+    'email': ['data-team@carental.com'],
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}
+
+# Definir el DAG
+with DAG(
+    dag_id='car_rental_child_dag',
+    default_args=default_args,
+    description='DAG HIJO: Procesa datos de Car Rental y los carga en Hive',
+    schedule_interval=None,  # Solo se ejecuta cuando lo dispara el padre
+    start_date=datetime(2023, 1, 1),
+    catchup=False,
+    is_paused_upon_creation=False,  # ✅ Se activa automáticamente
+    tags=['car-rental', 'child', 'processing'],
+) as dag:
+
+    # ============================================
+    # TAREA 1: INICIO
+    # ============================================
+    inicio = DummyOperator(
+        task_id='inicio_procesamiento',
+        doc_md="""
+        ## Inicio del Procesamiento
+        
+        Este es el DAG HIJO que:
+        1. Lee archivos desde HDFS
+        2. Aplica transformaciones (Punto 3)
+        3. Hace JOIN entre datasets
+        4. Carga datos en Hive
+        """,
+    )
+
+    # ============================================
+    # TAREA 2: PROCESAMIENTO CON SPARK
+    # ============================================
+    process_data = BashOperator(
+        task_id='spark_process_data',
+        bash_command='''
+        export SPARK_HOME=/home/hadoop/spark
+        export HADOOP_HOME=/home/hadoop/hadoop
+        export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+        export PATH=$SPARK_HOME/bin:$HADOOP_HOME/bin:$PATH
+        
+        echo "=== Iniciando procesamiento con Spark ==="
+        spark-submit /home/hadoop/scripts/process_car_rental.py
+        ''',
+        doc_md="""
+        ## Procesamiento con Spark
+        
+        Transformaciones aplicadas (Punto 3):
+        
+        1. **Renombrar columnas**: 
+           - Eliminar espacios y puntos
+           - Usar underscore (_)
+           - Nombres cortos y descriptivos
+        
+        2. **Redondear rating**:
+           - Convertir float a int
+           - Aplicar round()
+        
+        3. **JOIN de datasets**:
+           - car_rental_data JOIN georef_usa_states
+           - LEFT JOIN por state code
+        
+        4. **Eliminar rating nulo**:
+           - Filtrar registros con rating IS NULL
+        
+        5. **fuelType a minúsculas**:
+           - lower(fuelType)
+        
+        6. **Excluir Texas**:
+           - Filtrar state != 'TX'
+        
+        7. **Insertar en Hive**:
+           - Base de datos: car_rental_db
+           - Tabla: car_rental_analytics
+        """,
+    )
+
+    # ============================================
+    # TAREA 3: VERIFICAR DATOS PROCESADOS
+    # ============================================
+    verificar_datos = BashOperator(
+        task_id='verificar_datos_procesados',
+        bash_command='''
+        export HIVE_HOME=/home/hadoop/hive
+        export HADOOP_HOME=/home/hadoop/hadoop
+        export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+        export PATH=$HIVE_HOME/bin:$HADOOP_HOME/bin:$PATH
+        
+        echo "=== Verificando datos procesados ==="
+        hive -e "
+        USE car_rental_db;
+        
+        SELECT COUNT(*) as total_registros 
+        FROM car_rental_analytics;
+        
+        SELECT fuelType, COUNT(*) as cantidad 
+        FROM car_rental_analytics 
+        GROUP BY fuelType;
+        "
+        ''',
+        doc_md="""
+        ## Verificación de Datos Procesados
+        
+        Verifica:
+        1. Total de registros cargados (~4,905)
+        2. Distribución por tipo de combustible
+        3. Que fuelType esté en minúsculas
+        """,
+    )
+
+    # ============================================
+    # TAREA 4: VERIFICAR EXCLUSIÓN DE TEXAS
+    # ============================================
+    verificar_texas = BashOperator(
+        task_id='verificar_exclusion_texas',
+        bash_command='''
+        export HIVE_HOME=/home/hadoop/hive
+        export HADOOP_HOME=/home/hadoop/hadoop
+        export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+        export PATH=$HIVE_HOME/bin:$HADOOP_HOME/bin:$PATH
+        
+        echo "=== Verificando exclusión de Texas ==="
+        hive -e "
+        USE car_rental_db;
+        SELECT COUNT(*) as registros_texas 
+        FROM car_rental_analytics 
+        WHERE state_name = 'Texas';
+        "
+        ''',
+        doc_md="""
+        ## Verificar Exclusión de Texas
+        
+        Esta consulta debe retornar 0 registros.
+        Si retorna > 0, hay un error en el filtrado.
+        """,
+    )
+
+    # ============================================
+    # TAREA 5: VERIFICAR RATING NULOS
+    # ============================================
+    verificar_rating = BashOperator(
+        task_id='verificar_rating_nulos',
+        bash_command='''
+        export HIVE_HOME=/home/hadoop/hive
+        export HADOOP_HOME=/home/hadoop/hadoop
+        export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+        export PATH=$HIVE_HOME/bin:$HADOOP_HOME/bin:$PATH
+        
+        echo "=== Verificando rating nulos ==="
+        hive -e "
+        USE car_rental_db;
+        SELECT COUNT(*) as rating_nulos 
+        FROM car_rental_analytics 
+        WHERE rating IS NULL;
+        "
+        ''',
+        doc_md="""
+        ## Verificar Rating Nulos
+        
+        Esta consulta debe retornar 0 registros.
+        Si retorna > 0, hay registros con rating nulo que no se filtraron.
+        """,
+    )
+
+    # ============================================
+    # TAREA 6: ESTADÍSTICAS GENERALES
+    # ============================================
+    estadisticas = BashOperator(
+        task_id='generar_estadisticas',
+        bash_command='''
+        export HIVE_HOME=/home/hadoop/hive
+        export HADOOP_HOME=/home/hadoop/hadoop
+        export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+        export PATH=$HIVE_HOME/bin:$HADOOP_HOME/bin:$PATH
+        
+        echo "=== Generando estadísticas generales ==="
+        hive -e "USE car_rental_db; SELECT COUNT(*) as total FROM car_rental_analytics;"
+        hive -e "USE car_rental_db; SELECT COUNT(DISTINCT state_name) as estados FROM car_rental_analytics;"
+        ''',
+        doc_md="""
+        ## Estadísticas Generales
+        
+        Genera estadísticas básicas del dataset procesado.
+        """,
+    )
+
+    # ============================================
+    # TAREA 7: FIN
+    # ============================================
+    fin = DummyOperator(
+        task_id='fin_procesamiento',
+        doc_md="""
+        ## Fin del Procesamiento
+        
+        Procesamiento completado exitosamente:
+        ✅ Transformaciones aplicadas
+        ✅ JOIN realizado
+        ✅ Datos cargados en Hive
+        ✅ Validaciones completadas
+        
+        **Siguiente paso:** Ejecutar consultas de negocio (Punto 5)
+        """,
+    )
+
+    # ============================================
+    # DEFINIR FLUJO DE TAREAS
+    # ============================================
+    inicio >> process_data >> verificar_datos
+    verificar_datos >> [verificar_texas, verificar_rating]
+    [verificar_texas, verificar_rating] >> estadisticas >> fin
+
+💾 Guarda en nano:
+Ctrl + O → Enter → Ctrl + X
+
+hadoop@cd7195a9ebf6:~/airflow/dags$ chmod +x car_rental_parent_dag.py
+hadoop@cd7195a9ebf6:~/airflow/dags$ chmod +x car_rental_child_dag.py
+
+/////////////////// Ejecutamos en Airflow ////////////////////
+
+////////////////// Testeamos con HIVE ////////////////////
+a. Cantidad de alquileres de autos, teniendo en cuenta sólo los vehículos 
+ecológicos (fuelType hibrido o eléctrico) y con un rating de al menos 4.  
+
+hive> SELECT
+    >     COUNT(*) as total_alquileres_ecologicos
+    > FROM car_rental_analytics
+    > WHERE (fuelType = 'hybrid' OR fuelType = 'electric')
+    >   AND rating >= 4;
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+771
+Time taken: 4.427 seconds, Fetched: 1 row(s)
+
+hive> SELECT
+    >     fuelType,
+    >     COUNT(*) as total_alquileres,
+    >     AVG(rating) as rating_promedio,
+    >     SUM(renterTripsTaken) as total_viajes
+    > FROM car_rental_analytics
+    > WHERE (fuelType = 'hybrid' OR fuelType = 'electric')
+    >   AND rating >= 4
+    > GROUP BY fuelType
+    > ORDER BY total_alquileres DESC;
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+electric        542     4.987084870848708       17601
+hybrid  229     4.991266375545852       9348
+Time taken: 3.798 seconds, Fetched: 2 row(s)
+
+b. los 5 estados con menor cantidad de alquileres (mostrar query y visualización) 
+
+
+hive> SELECT
+    >     state_name,
+    >     COUNT(*) as total_alquileres,
+    >     ROUND(AVG(rating), 2) as rating_promedio,
+    >     ROUND(AVG(rate_daily), 2) as tarifa_diaria_promedio
+    > FROM car_rental_analytics
+    > WHERE state_name IS NOT NULL
+    > GROUP BY state_name
+    > ORDER BY total_alquileres ASC
+    > LIMIT 5;
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+state_name      total_alquileres        rating_promedio tarifa_diaria_promedio
+Montana 1       5.0     74.0
+West Virginia   3       5.0     59.33
+New Hampshire   3       5.0     83.0
+Delaware        4       5.0     54.5
+Mississippi     4       5.0     41.75
+Time taken: 3.565 seconds, Fetched: 5 row(s)
+
+c. los 10 modelos (junto con su marca) de autos más rentados (mostrar query y 
+visualización) 
+
+hive> SELECT
+    >     make as marca,
+    >     model as modelo,
+    >     COUNT(*) as total_alquileres,
+    >     ROUND(AVG(rating), 2) as rating_promedio,
+    >     ROUND(AVG(rate_daily), 2) as tarifa_diaria_promedio,
+    >     SUM(renterTripsTaken) as total_viajes
+    > FROM car_rental_analytics
+    > WHERE make IS NOT NULL
+    >   AND model IS NOT NULL
+    > GROUP BY make, model
+    > ORDER BY total_alquileres DESC
+    > LIMIT 10;
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+marca   modelo  total_alquileres        rating_promedio tarifa_diaria_promedio  total_viajes
+Tesla   Model 3 288     4.98    128.01  9794
+Ford    Mustang 136     4.96    74.87   5882
+Tesla   Model S 122     4.98    135.42  3952
+Jeep    Wrangler        108     4.99    78.25   4762
+Tesla   Model X 103     4.99    192.7   3638
+Toyota  Corolla 78      4.96    35.55   4676
+Mercedes-Benz   C-Class 78      4.96    79.27   2818
+BMW     3 Series        76      4.99    62.62   3293
+Chevrolet       Corvette        68      4.99    176.21  4164
+Chevrolet       Camaro  61      5.0     87.02   2797
+Time taken: 3.535 seconds, Fetched: 10 row(s)
+
+d. Mostrar por año, cuántos alquileres se hicieron, teniendo en cuenta automóviles 
+fabricados desde 2010 a 2015 
+
+hive> SELECT
+    >     year as anio_fabricacion,
+    >     COUNT(*) as total_alquileres,
+    >     ROUND(AVG(rating), 2) as rating_promedio,
+    >     ROUND(AVG(rate_daily), 2) as tarifa_diaria_promedio,
+    >     COUNT(DISTINCT make) as cantidad_marcas,
+    >     SUM(renterTripsTaken) as total_viajes
+    > FROM car_rental_analytics
+    > WHERE year BETWEEN 2010 AND 2015
+    > GROUP BY year
+    > ORDER BY year;
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+anio_fabricacion        total_alquileres        rating_promedio tarifa_diaria_promedio  cantidad_marcas total_viajes
+2010    144     4.97    61.01   30      6754
+2011    200     4.98    69.72   30      8141
+2012    225     4.97    60.83   28      9999
+2013    305     4.97    78.3    35      12328
+2014    382     4.98    84.48   36      15477
+2015    532     4.98    94.53   37      18799
+Time taken: 3.226 seconds, Fetched: 6 row(s)
+
+SELECT 
+    MIN(year) as anio_minimo,
+    MAX(year) as anio_maximo,
+    COUNT(*) as total_alquileres,
+    ROUND(AVG(rating), 2) as rating_promedio,
+    COUNT(DISTINCT make) as total_marcas,
+    COUNT(DISTINCT model) as total_modelos
+FROM car_rental_analytics
+WHERE year BETWEEN 2010 AND 2015;
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+anio_minimo     anio_maximo     total_alquileres        rating_promedio total_marcas    total_modelos
+2010    2015    1788    4.97    46      302
+Time taken: 1.616 seconds, Fetched: 1 row(s)
+
+e. las 5 ciudades con más alquileres de vehículos ecológicos (fuelType hibrido o 
+electrico) 
+
+hive> SELECT
+    >     city as ciudad,
+    >     state_name as estado,
+    >     COUNT(*) as total_alquileres_ecologicos,
+    >     ROUND(AVG(rating), 2) as rating_promedio,
+    >     COUNT(CASE WHEN fuelType = 'hybrid' THEN 1 END) as hibridos,
+    >     COUNT(CASE WHEN fuelType = 'electric' THEN 1 END) as electricos,
+    >     ROUND(AVG(rate_daily), 2) as tarifa_diaria_promedio
+    > FROM car_rental_analytics
+    > WHERE (fuelType = 'hybrid' OR fuelType = 'electric')
+    >   AND city IS NOT NULL
+    > GROUP BY city, state_name
+    > ORDER BY total_alquileres_ecologicos DESC
+    > LIMIT 5;
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+ciudad  estado  total_alquileres_ecologicos     rating_promedio hibridos        electricos      tarifa_diaria_promedio
+San Diego       California      44      5.0     13      31      105.68
+Las Vegas       Nevada  34      4.97    2       32      145.47
+Portland        Oregon  20      5.0     4       16      115.0
+Phoenix Arizona 17      5.0     9       8       90.82
+San Jose        California      15      5.0     4       11      90.53
+Time taken: 3.86 seconds, Fetched: 5 row(s)
+
+f. el promedio de reviews, segmentando por tipo de combustible 
+
+Total MapReduce CPU Time Spent: 0 msec
+OK
+tipo_combustible        total_vehiculos promedio_reviews        minimo_reviews  maximo_reviews  rating_promedio total_reviews
+hybrid  229     34.87   1       193     4.99    7986
+gasoline        4015    31.93   1       321     4.98    128187
+electric        542     28.34   1       248     4.99    15360
+diesel  58      17.5    1       103     4.98    1015
+Time taken: 3.867 seconds, Fetched: 4 row(s)
+
+
+
+
+
+
+
+
+
